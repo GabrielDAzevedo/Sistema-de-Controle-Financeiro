@@ -414,7 +414,59 @@ const Cloud = {
 // ==========================================
 // 4. UI, THEME, GAMIFICATION & BACKUP LOCAL
 // ==========================================
+const Metas = {
+    getMetas() {
+        const vals = [];
+        for (let i = 1; i <= 5; i++) {
+            const el = document.getElementById(`meta-${i}`);
+            const v = el ? parseFloat(el.value) : NaN;
+            if (!isNaN(v) && v > 0) vals.push(v);
+        }
+
+        // fallback se usuário ainda não salvou/valores vazios
+        if (vals.length === 0) {
+            const saved = DB.get('sf_metas_v1', null);
+            if (Array.isArray(saved) && saved.length) return saved;
+            return [10000, 25000, 50000, 75000, 100000];
+        }
+
+        vals.sort((a, b) => a - b);
+        return vals;
+    },
+
+    getFinalMeta() {
+        const metas = this.getMetas();
+        return metas[metas.length - 1] || 100000;
+    },
+
+    saveFromInputs() {
+        const vals = [];
+        for (let i = 1; i <= 5; i++) {
+            const el = document.getElementById(`meta-${i}`);
+            const v = el ? parseFloat(el.value) : NaN;
+            if (!isNaN(v) && v > 0) vals.push(v);
+        }
+        vals.sort((a, b) => a - b);
+        if (vals.length === 0) return UI.showToast('Informe ao menos 1 meta válida (R$).', 'warning');
+        DB.set('sf_metas_v1', vals);
+        UI.showToast('Metas salvas com sucesso.', 'success');
+        App.updateAll();
+    },
+
+    resetToDefault() {
+        DB.set('sf_metas_v1', null);
+        // limpa inputs
+        for (let i = 1; i <= 5; i++) {
+            const el = document.getElementById(`meta-${i}`);
+            if (el) el.value = '';
+        }
+        UI.showToast('Metas resetadas.', 'success');
+        App.updateAll();
+    }
+};
+
 const UI = {
+
     periodoGraficoDias: 30,
 
     initTheme() {
@@ -540,10 +592,20 @@ const UI = {
     },
 
     checkGamification(patrimonioTotal) {
-        const milestones = [10000, 25000, 50000, 75000, 100000];
+        const milestones = Metas.getMetas();
         let reached = DB.get('sf_milestones', []);
-        
+
+        // limpa conquistas antigas caso metas tenham mudado
+        if (!Array.isArray(reached)) reached = [];
+        const lastFinal = (milestones[milestones.length - 1] || 100000);
+        const storedFinal = DB.get('sf_metas_final_v1', null);
+        if(storedFinal !== lastFinal) {
+            reached = [];
+            DB.set('sf_metas_final_v1', lastFinal);
+        }
+
         for (let m of milestones) {
+
             if (patrimonioTotal >= m && !reached.includes(m)) {
                 reached.push(m);
                 DB.set('sf_milestones', reached);
@@ -738,55 +800,69 @@ const Dashboard = {
     },
 
     calcularProjecao(patrimonioTotal) {
-        if (patrimonioTotal >= 100000) {
-            document.getElementById('meta-projecao').innerHTML = `<i class="fa-solid fa-trophy"></i> Meta alcançada! Parabéns!`;
+        const metaValues = Metas.getMetas();
+        const maiorMeta = metaValues[metaValues.length - 1] || 100000;
+
+        if (patrimonioTotal >= maiorMeta) {
+            document.getElementById('meta-projecao').innerHTML = `<i class="fa-solid fa-trophy"></i> Todas as metas alcançadas! Parabéns!`;
             return;
         }
 
         const dataH = new Date();
-        const past90Days = new Date();
+        const past90Days = new Date(dataH);
         past90Days.setDate(dataH.getDate() - 90);
-        
+
         const isoPast90 = past90Days.toISOString().split('T')[0];
-        
         let ganhos90Dias = 0;
 
+        // Aportes (transações)
         DB.getTransacoes().forEach(t => {
-            if (t.cat.includes('Aporte') && t.data >= isoPast90) {
-                ganhos90Dias += t.valor;
+            if (t.cat && t.cat.includes('Aporte') && t.data && t.data >= isoPast90) {
+                ganhos90Dias += t.valor || 0;
             }
         });
 
+        // Rendimento (histórico das caixinhas) - histórico pode estar como DD/MM/YYYY
         Object.values(DB.getBancos()).forEach(banco => {
-            banco.historico.forEach(h => {
-                if (h.tipo === 'rendimento') {
+            (banco.historico || []).forEach(h => {
+                if (h.tipo === 'rendimento' && typeof h.data === 'string') {
                     const parts = h.data.split('/');
                     if (parts.length === 3) {
                         const hDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-                        if (hDate >= past90Days) ganhos90Dias += h.valorMovimento;
+                        if (hDate >= past90Days) ganhos90Dias += h.valorMovimento || 0;
                     }
                 }
             });
         });
 
         const mediaMensal = ganhos90Dias / 3;
-        
         if (mediaMensal <= 0) {
             document.getElementById('meta-projecao').innerHTML = `<i class="fa-solid fa-chart-line"></i> Faça aportes para calcular a projeção.`;
             return;
         }
 
-        const faltam = 100000 - patrimonioTotal;
-        const mesesFaltantes = Math.ceil(faltam / mediaMensal);
-        
-        const dataProjetada = new Date();
-        dataProjetada.setMonth(dataProjetada.getMonth() + mesesFaltantes);
-        
         const mesesNomes = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-        const strProj = `${mesesNomes[dataProjetada.getMonth()]}/${dataProjetada.getFullYear()}`;
 
-        document.getElementById('meta-projecao').innerHTML = `<i class="fa-solid fa-rocket"></i> Projeção 100k: <b>${strProj}</b> (Média: R$ ${Math.round(mediaMensal)})`;
+        // Para TODAS as metas: alcançada / data estimada
+        const itens = metaValues.map(m => {
+            if (patrimonioTotal >= m) {
+                return `<div><i class="fa-solid fa-check" style="color: var(--success)"></i> Meta R$ ${Math.round(m).toLocaleString('pt-BR')} — <b>alcançada</b></div>`;
+            }
+            const mesesFaltantes = Math.ceil((m - patrimonioTotal) / mediaMensal);
+            const dt = new Date();
+            dt.setMonth(dt.getMonth() + mesesFaltantes);
+            const str = `${mesesNomes[dt.getMonth()]}/${dt.getFullYear()}`;
+            return `<div><i class="fa-solid fa-rocket"></i> Meta R$ ${Math.round(m).toLocaleString('pt-BR')} — em <b>${str}</b></div>`;
+        });
+
+        document.getElementById('meta-projecao').innerHTML = `
+            <div style="display:flex; flex-direction:column; gap:4px;">
+                ${itens.join('')}
+            </div>
+            <div style="margin-top:6px; color: var(--text-muted); font-size: 11px;">(Média: R$ ${Math.round(mediaMensal).toLocaleString('pt-BR')})</div>
+        `;
     },
+
 
     render() {
         const cc = DB.getCC();
@@ -803,9 +879,18 @@ const Dashboard = {
         document.getElementById('dash-receber').innerText = totEmp.toLocaleString('pt-BR', {style:'currency',currency:'BRL'});
         document.getElementById('dash-rv').innerText = totRV.toLocaleString('pt-BR', {style:'currency',currency:'BRL'});
 
-        const perc = Math.min((patrimonio / 100000) * 100, 100);
+        const metaValues = Metas.getMetas();
+        const finalMeta = metaValues[metaValues.length - 1] || 100000;
+        const metaTextoAlvo = metaValues[0] || 10000;
+        const perc = Math.min((patrimonio / finalMeta) * 100, 100);
+
         document.getElementById('meta-fill').style.width = `${perc.toFixed(1)}%`;
-        document.getElementById('meta-texto').innerText = `${perc.toFixed(1)}% concluído | Faltam ${Math.max(0, 100000 - patrimonio).toLocaleString('pt-BR', {style:'currency',currency:'BRL'})}`;
+        // Texto deve refletir o progresso no MAIOR valor (meta final)
+        document.getElementById('meta-texto').innerText = `${perc.toFixed(1)}% concluído | Faltam ${Math.max(0, finalMeta - patrimonio).toLocaleString('pt-BR', {style:'currency',currency:'BRL'})}`;
+
+
+
+
 
         UI.checkGamification(patrimonio);
         this.calcularProjecao(patrimonio);
@@ -1528,6 +1613,10 @@ const Emprestimos = {
 const App = {
     init() {
         UI.initTheme();
+        // Metas (até 5)
+        document.getElementById('btn-save-metas')?.addEventListener('click', () => Metas.saveFromInputs());
+        document.getElementById('btn-reset-metas')?.addEventListener('click', () => Metas.resetToDefault());
+
         UI.initNavegacao();
         Backup.init();
         Transacoes.init();

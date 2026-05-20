@@ -119,12 +119,18 @@
 
                     <div class="card" style="position: relative;">
                         <div class="card-icon"><i class="fa-solid fa-bullseye"></i></div>
-                        <h3>Progresso da Meta (R$ 100k)</h3>
-                        <div class="progress-bar">
+                        <h3 id="meta-card-title">Progresso da Meta</h3>
+                        <div class="progress-bar" style="position: relative;">
                             <div id="meta-fill" class="fill" style="width: 0%;"></div>
+
+                            <!-- fallback caso o JS não injete marcadores dinâmicos -->
                             <div class="marker" style="left: 10%;" title="10k"></div>
                             <div class="marker" style="left: 25%;" title="25k"></div>
                             <div class="marker" style="left: 50%;" title="50k"></div>
+
+                            <div id="meta-markers" class="meta-markers" style="position: absolute; left:0; right:0; top:0; bottom:0; pointer-events:none;">
+                                <!-- marcadores injetados via JS -->
+                            </div>
                         </div>
                         <p id="meta-texto" class="meta-text" style="margin-bottom: 8px;">0% concluído</p>
                         <div class="meta-projecao" id="meta-projecao">
@@ -451,6 +457,56 @@
                                     </button>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <div class="card" style="border-left: 5px solid var(--primary);">
+                        <div class="card-icon"><i class="fa-solid fa-bullseye"></i></div>
+                        <h3 style="font-size: 16px; margin-bottom: 10px; color: var(--text-main);">Metas (até 5)</h3>
+                        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 25px; font-weight: 400; line-height: 1.6;">
+                            Defina valores em R$ para atualizar as marcas e a barra de progresso do cartão principal.
+                        </p>
+
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div>
+                                    <label style="display:block; font-size:12px; color: var(--text-muted); margin-bottom:6px;">Meta 1 (R$)</label>
+                                    <input type="number" id="meta-1" placeholder="Ex: 10000" step="1" style="width:100%; padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 10px; outline:none; background: var(--input-bg); color: var(--text-main);"/>
+                                </div>
+                                <div>
+                                    <label style="display:block; font-size:12px; color: var(--text-muted); margin-bottom:6px;">Meta 2 (R$)</label>
+                                    <input type="number" id="meta-2" placeholder="Ex: 25000" step="1" style="width:100%; padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 10px; outline:none; background: var(--input-bg); color: var(--text-main);"/>
+                                </div>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div>
+                                    <label style="display:block; font-size:12px; color: var(--text-muted); margin-bottom:6px;">Meta 3 (R$)</label>
+                                    <input type="number" id="meta-3" placeholder="Ex: 50000" step="1" style="width:100%; padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 10px; outline:none; background: var(--input-bg); color: var(--text-main);"/>
+                                </div>
+                                <div>
+                                    <label style="display:block; font-size:12px; color: var(--text-muted); margin-bottom:6px;">Meta 4 (R$)</label>
+                                    <input type="number" id="meta-4" placeholder="Ex: 75000" step="1" style="width:100%; padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 10px; outline:none; background: var(--input-bg); color: var(--text-main);"/>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style="display:block; font-size:12px; color: var(--text-muted); margin-bottom:6px;">Meta 5 (R$)</label>
+                                <input type="number" id="meta-5" placeholder="Ex: 100000" step="1" style="width:100%; padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 10px; outline:none; background: var(--input-bg); color: var(--text-main);"/>
+                            </div>
+
+                            <div style="display:flex; gap: 12px; flex-wrap: wrap;">
+                                <button id="btn-save-metas" class="btn-backup btn-import" style="background-color: var(--primary);">
+                                    <i class="fa-solid fa-floppy-disk"></i> Salvar metas
+                                </button>
+                                <button id="btn-reset-metas" class="btn-backup" style="background-color: var(--text-muted);">
+                                    <i class="fa-solid fa-rotate-left"></i> Reset
+                                </button>
+                            </div>
+
+                            <p style="font-size: 12px; color: var(--text-placeholder); margin: 0;">
+                                A barra usa a maior meta preenchida como “final”. O texto do card usa a menor meta como “meta mais curta”.
+                            </p>
                         </div>
                     </div>
 
