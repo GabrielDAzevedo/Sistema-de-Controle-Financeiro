@@ -845,14 +845,15 @@ const Dashboard = {
 
         // Para TODAS as metas: alcançada / data estimada
         const itens = metaValues.map(m => {
+            const faltam = Math.max(0, m - patrimonioTotal);
             if (patrimonioTotal >= m) {
-                return `<div><i class="fa-solid fa-check" style="color: var(--success)"></i> Meta R$ ${Math.round(m).toLocaleString('pt-BR')} — <b>alcançada</b></div>`;
+                return `<div><i class="fa-solid fa-check" style="color: var(--success)"></i> Meta R$ ${Math.round(m).toLocaleString('pt-BR')} — <b>alcançada</b> (faltam: R$ 0)</div>`;
             }
-            const mesesFaltantes = Math.ceil((m - patrimonioTotal) / mediaMensal);
+            const mesesFaltantes = Math.ceil(faltam / mediaMensal);
             const dt = new Date();
             dt.setMonth(dt.getMonth() + mesesFaltantes);
             const str = `${mesesNomes[dt.getMonth()]}/${dt.getFullYear()}`;
-            return `<div><i class="fa-solid fa-rocket"></i> Meta R$ ${Math.round(m).toLocaleString('pt-BR')} — em <b>${str}</b></div>`;
+            return `<div><i class="fa-solid fa-rocket"></i> Meta R$ ${Math.round(m).toLocaleString('pt-BR')} — faltam: <b>R$ ${Math.round(faltam).toLocaleString('pt-BR')}</b> — em <b>${str}</b></div>`;
         });
 
         document.getElementById('meta-projecao').innerHTML = `
