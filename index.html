@@ -328,27 +328,6 @@
                     <p>Despesas debitam da Conta Corrente. Aportes vão p/ Caixinha de menor valor.</p>
                 </header>
 
-                <div class="financial-form">
-                    <input type="text" id="input-data" placeholder="Data" required 
-                           onfocus="(this.type='date'); try{this.showPicker()}catch(e){}" 
-                           onblur="if(!this.value) this.type='text'">
-                    <input type="text" id="input-desc" placeholder="Descrição" required>
-                    <select id="input-cat" required>
-                        <option value="" disabled selected hidden>Categoria</option>
-                        <option value="Aporte Mensal">Aporte Mensal</option>
-                        <option value="Aporte Eventual">Aporte Eventual</option>
-                        <option value="Despesa Fixa">Despesa Fixa</option>
-                        <option value="Despesa Eventual">Despesa Eventual</option>
-                        <option value="Outros">Outros</option>
-                    </select>
-                    <input type="number" id="input-valor" placeholder="Valor (R$)" step="0.01" required>
-                    <select id="input-tipo" class="hidden">
-                        <option value="entrada">Entrada (+)</option>
-                        <option value="saida">Saída (-)</option>
-                    </select>
-                    <button id="btn-adicionar"><i class="fa-solid fa-plus"></i> Adicionar</button>
-                </div>
-
                 <div class="filter-toggle-container">
                     <button id="btn-toggle-filters" class="btn-toggle-filters">
                         <i class="fa-solid fa-filter"></i> Mostrar Filtros e Busca
@@ -379,6 +358,27 @@
                            onblur="if(!this.value) this.type='text'">
                 </div>
 
+                <div class="financial-form">
+                    <input type="text" id="input-data" placeholder="Data" required 
+                           onfocus="(this.type='date'); try{this.showPicker()}catch(e){}" 
+                           onblur="if(!this.value) this.type='text'">
+                    <input type="text" id="input-desc" placeholder="Descrição" required>
+                    <select id="input-cat" required>
+                        <option value="" disabled selected hidden>Categoria</option>
+                        <option value="Aporte Mensal">Aporte Mensal</option>
+                        <option value="Aporte Eventual">Aporte Eventual</option>
+                        <option value="Despesa Fixa">Despesa Fixa</option>
+                        <option value="Despesa Eventual">Despesa Eventual</option>
+                        <option value="Outros">Outros</option>
+                    </select>
+                    <input type="number" id="input-valor" placeholder="Valor (R$)" step="0.01" required>
+                    <select id="input-tipo" class="hidden">
+                        <option value="entrada">Entrada (+)</option>
+                        <option value="saida">Saída (-)</option>
+                    </select>
+                    <button id="btn-adicionar"><i class="fa-solid fa-plus"></i> Adicionar</button>
+                </div>
+
                 <div class="table-container">
                     <table class="data-table" id="table-finance">
                         <thead>
@@ -401,6 +401,27 @@
                     <p>O valor sai da sua Conta Corrente e volta a cada parcela paga.</p>
                 </header>
 
+                <div class="filter-toggle-container">
+                    <button id="btn-toggle-filters-emp" class="btn-toggle-filters">
+                        <i class="fa-solid fa-filter"></i> Mostrar Filtros e Busca
+                    </button>
+                </div>
+
+                <div class="filters-bar hidden" id="filters-bar-container-emp">
+                    <div class="search-box">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="filter-busca-emp" placeholder="Buscar por nome...">
+                    </div>
+                    <select id="filter-status-emp">
+                        <option value="todos">Todos os Status</option>
+                        <option value="ativos">Apenas Ativos</option>
+                        <option value="concluidos">Apenas Concluídos</option>
+                    </select>
+                    <input type="text" id="filter-data-emp" placeholder="Data Específica" 
+                           onfocus="(this.type='date'); try{this.showPicker()}catch(e){}" 
+                           onblur="if(!this.value) this.type='text'">
+                </div>
+
                 <div class="financial-form">
                     <input type="text" id="emp-nome" placeholder="Nome/Descrição (ex: João)" required style="flex: 1.5;">
                     <input type="number" id="emp-valor" placeholder="Valor Emprestado (R$)" step="10" required>
@@ -412,6 +433,7 @@
                         <option value="Semanal">Semanal</option>
                         <option value="Quinzenal">Quinzenal</option>
                         <option value="Mensal">Mensal</option>
+                        <option value="Personalizado">Personalizado</option>
                     </select>
 
                     <input type="number" id="emp-prazo" placeholder="Qtd. de Parcelas" step="1" required>
@@ -420,6 +442,118 @@
                 </div>
 
                 <div id="lista-emprestimos" class="emprestimos-list"></div>
+                
+                <!-- Modal de Edição de Empréstimo -->
+                <div id="modal-edit-emp" class="modal hidden">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Editar Empréstimo</h3>
+                            <button class="modal-close" onclick="document.getElementById('modal-edit-emp').classList.add('hidden')"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="edit-options">
+                                <button class="edit-option-btn" data-action="nome">
+                                    <i class="fa-solid fa-pen-to-square"></i>
+                                    <span>Mudar Nome</span>
+                                </button>
+                                <button class="edit-option-btn" data-action="parcelas">
+                                    <i class="fa-solid fa-list-check"></i>
+                                    <span>Editar Parcelas</span>
+                                </button>
+                                <button class="edit-option-btn" data-action="numero">
+                                    <i class="fa-solid fa-hashtag"></i>
+                                    <span>Editar Número de Parcelas</span>
+                                </button>
+                                <button class="edit-option-btn" data-action="juros">
+                                    <i class="fa-solid fa-percent"></i>
+                                    <span>Editar Taxa de Juros</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal de Edição de Nome -->
+                <div id="modal-edit-nome" class="modal hidden">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Mudar Nome e Data</h3>
+                            <button class="modal-close" onclick="document.getElementById('modal-edit-nome').classList.add('hidden')"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label>Novo Nome</label>
+                                <input type="text" id="edit-emp-nome" placeholder="Digite o novo nome">
+                            </div>
+                            <div class="form-group">
+                                <label>Data do Empréstimo</label>
+                                <input type="date" id="edit-emp-data">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn-cancel" onclick="document.getElementById('modal-edit-nome').classList.add('hidden')">Cancelar</button>
+                            <button class="btn-save" id="btn-save-nome">Salvar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal de Edição de Parcelas -->
+                <div id="modal-edit-parcelas" class="modal hidden">
+                    <div class="modal-content" style="max-width: 500px;">
+                        <div class="modal-header">
+                            <h3>Editar Parcelas</h3>
+                            <button class="modal-close" onclick="document.getElementById('modal-edit-parcelas').classList.add('hidden')"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div class="modal-body">
+                            <div id="parcelas-edit-container" style="max-height: 300px; overflow-y: auto;"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn-cancel" onclick="document.getElementById('modal-edit-parcelas').classList.add('hidden')">Cancelar</button>
+                            <button class="btn-save" id="btn-save-parcelas">Salvar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal de Edição de Número de Parcelas -->
+                <div id="modal-edit-numero" class="modal hidden">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Editar Número de Parcelas</h3>
+                            <button class="modal-close" onclick="document.getElementById('modal-edit-numero').classList.add('hidden')"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label>Número de Parcelas</label>
+                                <input type="number" id="edit-emp-numero" min="1" placeholder="Quantidade de parcelas">
+                            </div>
+                            <p style="font-size: 11px; color: var(--text-muted); margin-top: 10px;">Atenção: Alterar o número de parcelas pode recalcular os valores.</p>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn-cancel" onclick="document.getElementById('modal-edit-numero').classList.add('hidden')">Cancelar</button>
+                            <button class="btn-save" id="btn-save-numero">Salvar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal de Edição de Juros -->
+                <div id="modal-edit-juros" class="modal hidden">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Editar Taxa de Juros</h3>
+                            <button class="modal-close" onclick="document.getElementById('modal-edit-juros').classList.add('hidden')"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label>Taxa de Juros Total (%)</label>
+                                <input type="number" id="edit-emp-juros" step="0.1" placeholder="0.0">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn-cancel" onclick="document.getElementById('modal-edit-juros').classList.add('hidden')">Cancelar</button>
+                            <button class="btn-save" id="btn-save-juros">Salvar</button>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <section id="configuracoes" class="tab-content">

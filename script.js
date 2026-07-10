@@ -1400,7 +1400,122 @@ const RV = {
 };
 
 const Emprestimos = {
+    currentEditEmpId: null,
     init() {
+        // Lógica do botão Editar principal
+        document.getElementById('lista-emprestimos')?.addEventListener('click', (e) => {
+            const btnEdit = e.target.closest('.btn-edit-emp');
+            if(btnEdit) {
+                this.currentEditEmpId = parseInt(btnEdit.dataset.id);
+                document.getElementById('modal-edit-emp').classList.remove('hidden');
+            }
+        });
+
+        // Lógica das opções do modal principal (delegação global)
+        document.addEventListener('click', (e) => {
+            const btnOption = e.target.closest('.edit-option-btn');
+            if(btnOption) {
+                const action = btnOption.dataset.action;
+                document.getElementById('modal-edit-emp').classList.add('hidden');
+                this.openEditModal(action);
+            }
+        });
+
+        // Lógica de salvar nome
+        document.getElementById('btn-save-nome')?.addEventListener('click', () => {
+            const novoNome = document.getElementById('edit-emp-nome').value.trim();
+            const novaData = document.getElementById('edit-emp-data').value;
+            if(!novoNome) return UI.showToast('Nome inválido', 'warning');
+            
+            let emps = DB.getEmprestimos();
+            const emp = emps.find(x => x.id === this.currentEditEmpId);
+            if(emp) {
+                emp.nome = novoNome;
+                if(novaData) {
+                    emp.dataCriacao = novaData;
+                }
+                DB.setEmprestimos(emps);
+                document.getElementById('modal-edit-nome').classList.add('hidden');
+                App.updateAll();
+                UI.showToast('Nome e data atualizados!');
+            }
+        });
+
+        // Lógica de salvar número de parcelas
+        document.getElementById('btn-save-numero')?.addEventListener('click', () => {
+            const novoNumero = parseInt(document.getElementById('edit-emp-numero').value);
+            if(isNaN(novoNumero) || novoNumero < 1) return UI.showToast('Número inválido', 'warning');
+            
+            let emps = DB.getEmprestimos();
+            const emp = emps.find(x => x.id === this.currentEditEmpId);
+            if(emp) {
+                const diff = novoNumero - emp.parcelas.length;
+                if(diff > 0) {
+                    // Adicionar parcelas
+                    for(let i = 0; i < diff; i++) {
+                        emp.parcelas.push({ paga: false, valor: emp.valorParcela, dataPagamento: null });
+                    }
+                } else if(diff < 0) {
+                    // Remover parcelas (apenas não pagas)
+                    let removidas = 0;
+                    emp.parcelas = emp.parcelas.filter(p => {
+                        if(p.paga) return true;
+                        if(removidas < Math.abs(diff)) {
+                            removidas++;
+                            return false;
+                        }
+                        return true;
+                    });
+                }
+                emp.prazo = emp.parcelas.length;
+                DB.setEmprestimos(emps);
+                document.getElementById('modal-edit-numero').classList.add('hidden');
+                App.updateAll();
+                UI.showToast('Número de parcelas atualizado!');
+            }
+        });
+
+        // Lógica de salvar juros
+        document.getElementById('btn-save-juros')?.addEventListener('click', () => {
+            const novoJuros = parseFloat(document.getElementById('edit-emp-juros').value);
+            if(isNaN(novoJuros) || novoJuros < 0) return UI.showToast('Taxa inválida', 'warning');
+            
+            let emps = DB.getEmprestimos();
+            const emp = emps.find(x => x.id === this.currentEditEmpId);
+            if(emp) {
+                emp.jurosTotalPorcentagem = novoJuros;
+                emp.totalReceber = emp.valorEmprestado + (emp.valorEmprestado * (novoJuros / 100));
+                emp.valorParcela = emp.totalReceber / emp.prazo;
+                DB.setEmprestimos(emps);
+                document.getElementById('modal-edit-juros').classList.add('hidden');
+                App.updateAll();
+                UI.showToast('Taxa de juros atualizada!');
+            }
+        });
+
+        // Lógica de salvar parcelas
+        document.getElementById('btn-save-parcelas')?.addEventListener('click', () => {
+            let emps = DB.getEmprestimos();
+            const emp = emps.find(x => x.id === this.currentEditEmpId);
+            if(emp) {
+                emp.parcelas.forEach((p, i) => {
+                    const valorInput = document.getElementById(`parcela-valor-${i}`);
+                    const dataInput = document.getElementById(`parcela-data-${i}`);
+                    if(valorInput) {
+                        const novoValor = parseFloat(valorInput.value);
+                        if(!isNaN(novoValor)) p.valor = novoValor;
+                    }
+                    if(dataInput && dataInput.value) {
+                        p.dataPagamento = dataInput.value;
+                    }
+                });
+                DB.setEmprestimos(emps);
+                document.getElementById('modal-edit-parcelas').classList.add('hidden');
+                App.updateAll();
+                UI.showToast('Parcelas atualizadas!');
+            }
+        });
+
         document.getElementById('btn-add-emp')?.addEventListener('click', () => {
             const val = parseFloat(document.getElementById('emp-valor').value);
             const prazo = parseInt(document.getElementById('emp-prazo').value);
@@ -1411,14 +1526,15 @@ const Emprestimos = {
             if(!nome || isNaN(val) || isNaN(prazo)) return UI.showToast("Dados inválidos", "warning");
 
             const totR = val + (val*(juros/100));
+            const isPersonalizado = int === 'Personalizado';
+            const valorParcelaBase = isPersonalizado ? 0 : totR/prazo;
             
             let e = DB.getEmprestimos();
             const novoEmpId = Date.now();
-            e.unshift({ id: novoEmpId, nome, valorEmprestado: val, jurosTotalPorcentagem: juros, totalReceber: totR, valorParcela: totR/prazo, intervalo: int, prazo, parcelas: Array.from({length: prazo}, ()=>({paga: false})) });
-            DB.setEmprestimos(e);
-            
             const dataH = new Date();
             const dataLocal = dataH.getFullYear() + '-' + String(dataH.getMonth() + 1).padStart(2, '0') + '-' + String(dataH.getDate()).padStart(2, '0');
+            e.unshift({ id: novoEmpId, nome, valorEmprestado: val, jurosTotalPorcentagem: juros, totalReceber: totR, valorParcela: valorParcelaBase, intervalo: int, prazo, dataCriacao: dataLocal, parcelas: Array.from({length: prazo}, (_, i) => ({ paga: false, valor: isPersonalizado ? 0 : valorParcelaBase, dataPagamento: null })) });
+            DB.setEmprestimos(e);
             
             let trans = DB.getTransacoes();
             const novaT = {
@@ -1448,6 +1564,11 @@ const Emprestimos = {
                 const isChecked = e.target.checked;
 
                 emp.parcelas[pIdx].paga = isChecked;
+                if (isChecked) {
+                    emp.parcelas[pIdx].dataPagamento = new Date().toISOString().split('T')[0];
+                } else {
+                    emp.parcelas[pIdx].dataPagamento = null;
+                }
                 DB.setEmprestimos(emps);
                 
                 let trans = DB.getTransacoes();
@@ -1461,7 +1582,7 @@ const Emprestimos = {
                         data: dataLocal,
                         desc: `Recebimento: ${emp.nome} (Parc. ${pIdx + 1})`,
                         cat: 'Outros',
-                        valor: emp.valorParcela,
+                        valor: emp.parcelas[pIdx].valor || emp.valorParcela,
                         tipo: 'entrada',
                         empId: empId,
                         parcelaIdx: pIdx
@@ -1563,18 +1684,61 @@ const Emprestimos = {
                 App.updateAll();
             }
         });
+
+        // Event listeners para filtros de empréstimos
+        ['filter-busca-emp', 'filter-status-emp', 'filter-data-emp'].forEach(id => {
+            document.getElementById(id)?.addEventListener('input', () => this.render());
+        });
+
+        // Toggle filters bar for loans
+        document.getElementById('btn-toggle-filters-emp')?.addEventListener('click', function() {
+            const fb = document.getElementById('filters-bar-container-emp');
+            fb.classList.toggle('hidden');
+            if (fb.classList.contains('hidden')) {
+                this.innerHTML = '<i class="fa-solid fa-filter"></i> Mostrar Filtros e Busca';
+            } else {
+                this.innerHTML = '<i class="fa-solid fa-chevron-up"></i> Ocultar Filtros';
+            }
+        });
     },
     render() {
         const c = document.getElementById('lista-emprestimos');
         if(!c) return;
-        const emps = DB.getEmprestimos();
+        let emps = DB.getEmprestimos();
+
+        // Aplicar filtros
+        const termo = document.getElementById('filter-busca-emp')?.value.toLowerCase() || '';
+        const statusF = document.getElementById('filter-status-emp')?.value || 'todos';
+        const dataF = document.getElementById('filter-data-emp')?.value || '';
+
+        emps = emps.filter(emp => {
+            // Filtro por nome
+            if(termo && !emp.nome.toLowerCase().includes(termo)) return false;
+
+            // Filtro por status
+            if(statusF === 'ativos') {
+                const pagas = emp.parcelas.filter(p => p.paga).length;
+                if(pagas === emp.prazo) return false;
+            } else if(statusF === 'concluidos') {
+                const pagas = emp.parcelas.filter(p => p.paga).length;
+                if(pagas < emp.prazo) return false;
+            }
+
+            // Filtro por data
+            if(dataF && emp.dataCriacao !== dataF) return false;
+
+            return true;
+        });
         c.innerHTML = emps.length ? emps.map(emp => {
             const pagas = emp.parcelas.filter(p => p.paga).length;
             return `
             <div class="emp-card">
                 <div class="emp-header" onclick="this.parentElement.classList.toggle('expanded')">
                     <div class="emp-title"><h3>${emp.nome}</h3><p>R$ ${emp.valorEmprestado} + ${emp.jurosTotalPorcentagem}%</p></div>
-                    <div class="emp-stats"><div class="total">${emp.totalReceber.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div></div>
+                    <div class="emp-stats">
+                        <div class="total">${emp.totalReceber.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>
+                        ${emp.dataCriacao ? `<div class="data-criacao">${emp.dataCriacao.split('-').reverse().join('/')}</div>` : ''}
+                    </div>
                 </div>
                 <div class="emp-progress-container">
                     <div class="emp-progress-bar"><div class="emp-progress-fill" style="width: ${(pagas/emp.prazo)*100}%;"></div></div>
@@ -1583,6 +1747,7 @@ const Emprestimos = {
                     <div class="emp-body-header">
                         <h4>Controle</h4>
                         <div style="display: flex; gap: 8px;">
+                            <button class="btn-edit-emp" data-id="${emp.id}" title="Editar empréstimo"><i class="fa-solid fa-pen"></i></button>
                             <button class="btn-copy-emp" data-id="${emp.id}" title="Copiar comprovante para a área de transferência"><i class="fa-solid fa-copy"></i> <span>Copiar</span></button>
                             <button class="btn-export-emp" data-id="${emp.id}" title="Baixar comprovante de evolução em imagem"><i class="fa-solid fa-download"></i> <span>Baixar</span></button>
                             <button class="btn-delete-emp" data-id="${emp.id}"><i class="fa-solid fa-trash"></i> <span>Apagar</span></button>
@@ -1595,7 +1760,10 @@ const Emprestimos = {
                                     <input type="checkbox" class="parcela-check" data-emp="${emp.id}" data-idx="${i}" ${p.paga ? 'checked' : ''}>
                                     <span>Parc. ${i + 1}</span>
                                 </div>
-                                <span class="valor-parcela">${emp.valorParcela.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+                                <div class="parcela-info">
+                                    <span class="valor-parcela">${(p.valor || emp.valorParcela).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+                                    ${p.dataPagamento ? `<span class="data-pagamento">${p.dataPagamento.split('-').reverse().join('/')}</span>` : ''}
+                                </div>
                             </label>
                         `).join('')}
                     </div>
@@ -1605,6 +1773,39 @@ const Emprestimos = {
                 </div>
             </div>`;
         }).join('') : `<div class="empty-state"><p>Sem empréstimos ativos.</p></div>`;
+    },
+
+    openEditModal(action) {
+        const emps = DB.getEmprestimos();
+        const emp = emps.find(x => x.id === this.currentEditEmpId);
+        if(!emp) return;
+
+        switch(action) {
+            case 'nome':
+                document.getElementById('edit-emp-nome').value = emp.nome;
+                document.getElementById('edit-emp-data').value = emp.dataCriacao || '';
+                document.getElementById('modal-edit-nome').classList.remove('hidden');
+                break;
+            case 'parcelas':
+                const container = document.getElementById('parcelas-edit-container');
+                container.innerHTML = emp.parcelas.map((p, i) => `
+                    <div class="parcela-edit-item">
+                        <label>Parc. ${i + 1}</label>
+                        <input type="number" id="parcela-valor-${i}" value="${p.valor || emp.valorParcela}" step="0.01" placeholder="Valor">
+                        <input type="date" id="parcela-data-${i}" value="${p.dataPagamento || ''}">
+                    </div>
+                `).join('');
+                document.getElementById('modal-edit-parcelas').classList.remove('hidden');
+                break;
+            case 'numero':
+                document.getElementById('edit-emp-numero').value = emp.prazo;
+                document.getElementById('modal-edit-numero').classList.remove('hidden');
+                break;
+            case 'juros':
+                document.getElementById('edit-emp-juros').value = emp.jurosTotalPorcentagem;
+                document.getElementById('modal-edit-juros').classList.remove('hidden');
+                break;
+        }
     }
 };
 
