@@ -183,9 +183,14 @@
                         <h2>Caixinhas e Renda Fixa</h2>
                         <p>Adicione rendimentos (+) ou retiradas (-). A previsão usa a média de ganhos reais.</p>
                     </div>
-                    <div class="total-yield-badge" title="Soma total dos rendimentos adicionados hoje">
-                        <span>Rendimento Hoje</span>
-                        <strong id="total-rendimento-dia" class="positive">R$ 0,00</strong>
+                    <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                        <button id="btn-open-aporte" class="btn-backup btn-import" style="background-color: var(--primary);">
+                            <i class="fa-solid fa-piggy-bank"></i> Novo Aporte
+                        </button>
+                        <div class="total-yield-badge" title="Soma total dos rendimentos adicionados hoje">
+                            <span>Rendimento Hoje</span>
+                            <strong id="total-rendimento-dia" class="positive">R$ 0,00</strong>
+                        </div>
                     </div>
                 </header>
                 
@@ -298,6 +303,76 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="cards" id="descritivo-caixinhas-container" style="grid-template-columns: 1fr; margin-top: 30px;">
+                    <div class="card" id="descritivo-caixinhas-card">
+                        <div class="chart-header-actions" style="margin-bottom: 5px;">
+                            <h3 style="margin-bottom: 0;">Descritivo das Caixinhas</h3>
+                        </div>
+                        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px; font-weight: 400;">
+                            Movimentações consolidadas (aportes, rendimentos e retiradas) de todas as caixinhas de renda fixa.
+                        </p>
+                        <div class="table-container">
+                            <table class="data-table" id="table-descritivo-caixinhas">
+                                <thead>
+                                    <tr>
+                                        <th data-sort="data" class="sortable-caixinha">Data <i class="fa-solid fa-sort-down"></i></th>
+                                        <th data-sort="banco" class="sortable-caixinha">Caixinha <i class="fa-solid fa-sort"></i></th>
+                                        <th data-sort="tipo" class="sortable-caixinha">Tipo <i class="fa-solid fa-sort"></i></th>
+                                        <th data-sort="valorAnterior" class="sortable-caixinha">Valor Anterior <i class="fa-solid fa-sort"></i></th>
+                                        <th data-sort="valorMovimento" class="sortable-caixinha">Movimento <i class="fa-solid fa-sort"></i></th>
+                                        <th data-sort="valorNovo" class="sortable-caixinha">Valor Novo <i class="fa-solid fa-sort"></i></th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-descritivo-caixinhas"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal de Novo Aporte -->
+                <div id="modal-aporte" class="modal hidden">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Novo Aporte</h3>
+                            <button class="modal-close" onclick="document.getElementById('modal-aporte').classList.add('hidden')"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label>Caixinha de Destino</label>
+                                <select id="aporte-banco">
+                                    <option value="nubank">Nubank</option>
+                                    <option value="mp">Mercado Pago</option>
+                                    <option value="picpay">PicPay</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Categoria</label>
+                                <select id="aporte-cat">
+                                    <option value="Aporte Mensal">Aporte Mensal</option>
+                                    <option value="Aporte Eventual">Aporte Eventual</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Data</label>
+                                <input type="date" id="aporte-data">
+                            </div>
+                            <div class="form-group">
+                                <label>Descrição</label>
+                                <input type="text" id="aporte-desc" placeholder="ex: Aporte mensal">
+                            </div>
+                            <div class="form-group">
+                                <label>Valor (R$)</label>
+                                <input type="number" id="aporte-valor" placeholder="0,00" step="0.01">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn-cancel" onclick="document.getElementById('modal-aporte').classList.add('hidden')">Cancelar</button>
+                            <button class="btn-save" id="btn-salvar-aporte">Adicionar Aporte</button>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <section id="renda-variavel" class="tab-content">
@@ -328,9 +403,12 @@
                     <p>Despesas debitam da Conta Corrente. Aportes vão p/ Caixinha de menor valor.</p>
                 </header>
 
-                <div class="filter-toggle-container">
+                <div class="filter-toggle-container" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                     <button id="btn-toggle-filters" class="btn-toggle-filters">
                         <i class="fa-solid fa-filter"></i> Mostrar Filtros e Busca
+                    </button>
+                    <button id="btn-open-criar-desc" class="btn-backup btn-import" style="background-color: var(--primary);">
+                        <i class="fa-solid fa-plus"></i> Novo Lançamento
                     </button>
                 </div>
 
@@ -358,25 +436,52 @@
                            onblur="if(!this.value) this.type='text'">
                 </div>
 
-                <div class="financial-form">
-                    <input type="text" id="input-data" placeholder="Data" required 
-                           onfocus="(this.type='date'); try{this.showPicker()}catch(e){}" 
-                           onblur="if(!this.value) this.type='text'">
-                    <input type="text" id="input-desc" placeholder="Descrição" required>
-                    <select id="input-cat" required>
-                        <option value="" disabled selected hidden>Categoria</option>
-                        <option value="Aporte Mensal">Aporte Mensal</option>
-                        <option value="Aporte Eventual">Aporte Eventual</option>
-                        <option value="Despesa Fixa">Despesa Fixa</option>
-                        <option value="Despesa Eventual">Despesa Eventual</option>
-                        <option value="Outros">Outros</option>
-                    </select>
-                    <input type="number" id="input-valor" placeholder="Valor (R$)" step="0.01" required>
-                    <select id="input-tipo" class="hidden">
-                        <option value="entrada">Entrada (+)</option>
-                        <option value="saida">Saída (-)</option>
-                    </select>
-                    <button id="btn-adicionar"><i class="fa-solid fa-plus"></i> Adicionar</button>
+                <!-- Modal de Novo Lançamento / Edição -->
+                <div id="modal-criar-desc" class="modal hidden">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3 id="modal-desc-titulo">Novo Lançamento</h3>
+                            <button class="modal-close" onclick="document.getElementById('modal-criar-desc').classList.add('hidden')"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label>Data</label>
+                                <input type="text" id="input-data" placeholder="Data" required 
+                                       onfocus="(this.type='date'); try{this.showPicker()}catch(e){}" 
+                                       onblur="if(!this.value) this.type='text'">
+                            </div>
+                            <div class="form-group">
+                                <label>Descrição</label>
+                                <input type="text" id="input-desc" placeholder="Descrição" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Categoria</label>
+                                <select id="input-cat" required>
+                                    <option value="" disabled selected hidden>Categoria</option>
+                                    <option value="Aporte Mensal">Aporte Mensal</option>
+                                    <option value="Aporte Eventual">Aporte Eventual</option>
+                                    <option value="Despesa Fixa">Despesa Fixa</option>
+                                    <option value="Despesa Eventual">Despesa Eventual</option>
+                                    <option value="Outros">Outros</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Valor (R$)</label>
+                                <input type="number" id="input-valor" placeholder="Valor (R$)" step="0.01" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Tipo</label>
+                                <select id="input-tipo" class="hidden">
+                                    <option value="entrada">Entrada (+)</option>
+                                    <option value="saida">Saída (-)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn-cancel" onclick="document.getElementById('modal-criar-desc').classList.add('hidden')">Cancelar</button>
+                            <button class="btn-save" id="btn-adicionar"><i class="fa-solid fa-plus"></i> Adicionar</button>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="table-container">
@@ -401,9 +506,12 @@
                     <p>O valor sai da sua Conta Corrente e volta a cada parcela paga.</p>
                 </header>
 
-                <div class="filter-toggle-container">
+                <div class="filter-toggle-container" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                     <button id="btn-toggle-filters-emp" class="btn-toggle-filters">
                         <i class="fa-solid fa-filter"></i> Mostrar Filtros e Busca
+                    </button>
+                    <button id="btn-open-criar-emp" class="btn-backup btn-import" style="background-color: var(--primary);">
+                        <i class="fa-solid fa-plus"></i> Criar Empréstimo
                     </button>
                 </div>
 
@@ -422,26 +530,50 @@
                            onblur="if(!this.value) this.type='text'">
                 </div>
 
-                <div class="financial-form">
-                    <input type="text" id="emp-nome" placeholder="Nome/Descrição (ex: João)" required style="flex: 1.5;">
-                    <input type="number" id="emp-valor" placeholder="Valor Emprestado (R$)" step="10" required>
-                    <input type="number" id="emp-taxa-total" placeholder="Juros Totais (%)" step="1" required>
-                    
-                    <select id="emp-intervalo" required>
-                        <option value="" disabled selected hidden>Tipo de Parcela</option>
-                        <option value="Diária">Diária</option>
-                        <option value="Semanal">Semanal</option>
-                        <option value="Quinzenal">Quinzenal</option>
-                        <option value="Mensal">Mensal</option>
-                        <option value="Personalizado">Personalizado</option>
-                    </select>
-
-                    <input type="number" id="emp-prazo" placeholder="Qtd. de Parcelas" step="1" required>
-                    
-                    <button id="btn-add-emp"><i class="fa-solid fa-plus"></i> Criar Empréstimo</button>
-                </div>
-
                 <div id="lista-emprestimos" class="emprestimos-list"></div>
+
+                <!-- Modal de Criação de Empréstimo -->
+                <div id="modal-criar-emp" class="modal hidden">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Criar Empréstimo</h3>
+                            <button class="modal-close" onclick="document.getElementById('modal-criar-emp').classList.add('hidden')"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label>Nome/Descrição</label>
+                                <input type="text" id="emp-nome" placeholder="ex: João">
+                            </div>
+                            <div class="form-group">
+                                <label>Valor Emprestado (R$)</label>
+                                <input type="number" id="emp-valor" placeholder="0,00" step="10">
+                            </div>
+                            <div class="form-group">
+                                <label>Juros Totais (%)</label>
+                                <input type="number" id="emp-taxa-total" placeholder="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label>Tipo de Parcela</label>
+                                <select id="emp-intervalo">
+                                    <option value="" disabled selected hidden>Tipo de Parcela</option>
+                                    <option value="Diária">Diária</option>
+                                    <option value="Semanal">Semanal</option>
+                                    <option value="Quinzenal">Quinzenal</option>
+                                    <option value="Mensal">Mensal</option>
+                                    <option value="Personalizado">Personalizado</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Qtd. de Parcelas</label>
+                                <input type="number" id="emp-prazo" placeholder="0" step="1">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn-cancel" onclick="document.getElementById('modal-criar-emp').classList.add('hidden')">Cancelar</button>
+                            <button class="btn-save" id="btn-add-emp">Criar Empréstimo</button>
+                        </div>
+                    </div>
+                </div>
                 
                 <!-- Modal de Edição de Empréstimo -->
                 <div id="modal-edit-emp" class="modal hidden">

@@ -52,7 +52,8 @@ const GOOGLE_API = {
     tokenClient: null,
     isLoaded: false,
     fileId: null,
-    folderId: null
+    folderId: null,
+    refreshTimer: null
 };
 
 // ==========================================
@@ -563,6 +564,17 @@ const UI = {
         // Ação contextual do botão + (FAB) no Mobile
         document.getElementById('fab-add-tx')?.addEventListener('click', function() {
             const activeTab = document.querySelector('.tab-content.active').id;
+
+            if (activeTab === 'emprestimos') {
+                document.getElementById('modal-criar-emp')?.classList.remove('hidden');
+                return;
+            }
+
+            if (activeTab === 'descritivos') {
+                document.getElementById('modal-criar-desc')?.classList.remove('hidden');
+                return;
+            }
+
             const form = document.querySelector(`#${activeTab} .financial-form`);
             
             if (form) {
@@ -960,6 +972,12 @@ const Transacoes = {
     sortAsc: false,
 
     init() {
+        document.getElementById('btn-open-criar-desc')?.addEventListener('click', () => {
+            document.getElementById('modal-desc-titulo').innerText = 'Novo Lançamento';
+            document.getElementById('btn-adicionar').innerHTML = '<i class="fa-solid fa-plus"></i> Adicionar';
+            document.getElementById('modal-criar-desc')?.classList.remove('hidden');
+        });
+
         document.getElementById('input-cat')?.addEventListener('change', (e) => {
             document.getElementById('input-tipo').classList.toggle('hidden', e.target.value !== 'Outros');
         });
@@ -1047,6 +1065,7 @@ const Transacoes = {
             trans[idx] = novaT;
             this.idEmEdicao = null;
             document.getElementById('btn-adicionar').innerHTML = '<i class="fa-solid fa-plus"></i> Adicionar';
+            document.getElementById('modal-desc-titulo').innerText = 'Novo Lançamento';
             UI.showToast("Transação atualizada.");
         } else {
             if (tipo === 'entrada' && cat.includes('Aporte')) {
@@ -1060,6 +1079,7 @@ const Transacoes = {
         this.aplicarEfeito(novaT);
         DB.setTransacoes(trans);
         ['input-data','input-desc','input-valor','input-cat'].forEach(id => document.getElementById(id).value = '');
+        document.getElementById('modal-criar-desc')?.classList.add('hidden');
         App.updateAll();
     },
 
@@ -1100,17 +1120,9 @@ const Transacoes = {
                 document.getElementById('input-tipo').classList.remove('hidden');
                 document.getElementById('input-tipo').value = t.tipo;
             }
+            document.getElementById('modal-desc-titulo').innerText = 'Editar Lançamento';
             document.getElementById('btn-adicionar').innerHTML = '<i class="fa-solid fa-check"></i> Salvar Edição';
-            
-            // Garantir que o formulário apareça no mobile
-            const form = document.querySelector('#descritivos .financial-form');
-            if(form && !form.classList.contains('show')) {
-                form.classList.add('show');
-                const fab = document.getElementById('fab-add-tx');
-                if(fab) fab.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-            }
-
-            window.scrollTo({ top: document.querySelector('.financial-form').offsetTop - 50, behavior: 'smooth' });
+            document.getElementById('modal-criar-desc')?.classList.remove('hidden');
         }
     },
 
@@ -1161,6 +1173,9 @@ const Transacoes = {
 // 7. CAIXINHAS E RENDA VARIÁVEL
 // ==========================================
 const Caixinhas = {
+    sortCol: 'data',
+    sortAsc: false,
+
     init() {
         document.getElementById('bancos-container')?.addEventListener('click', (e) => {
             const card = e.target.closest('.rendimento-card');
@@ -1222,30 +1237,87 @@ const Caixinhas = {
             // Otimização: Delegação de eventos para remoção do histórico
             const btnDelHist = e.target.closest('.btn-delete-hist');
             if(btnDelHist) {
-                if(!confirm("Remover o registro do histórico?")) return;
-                const banco = btnDelHist.dataset.banco;
-                const idx = parseInt(btnDelHist.dataset.idx);
-                let bancos = DB.getBancos();
-                const reg = bancos[banco]?.historico?.[idx];
-                if (!reg) return;
-                
-                if (reg.tipo === 'rendimento' || reg.tipo === 'aporte') {
-                    bancos[banco].saldo = Math.max(0, bancos[banco].saldo - reg.valorMovimento);
-                    // Se o histórico removido foi um rendimento, não devemos ajustar CC aqui,
-                    // porque o CC só é afetado em 'withdraw' e em transações.
-                } else if (reg.tipo === 'retirada') {
-                    // Retirada (vai para CC) foi subtração do saldo da caixinha; ao remover,
-                    // devolvemos o saldo da caixinha (e mantemos CC como estava).
-                    bancos[banco].saldo += reg.valorMovimento;
-                    // Obs: o sistema não mantém vínculo automático do CC ao histórico,
-                    // então não ajustamos CC para evitar dupla contagem.
-                }
-                
-                bancos[banco].historico.splice(idx, 1);
-                DB.setBancos(bancos);
-                App.updateAll();
+                this.apagarHistorico(btnDelHist.dataset.banco, parseInt(btnDelHist.dataset.idx));
             }
         });
+
+        // Delegação separada para o descritivo consolidado (fora do bancos-container)
+        document.getElementById('descritivo-caixinhas-container')?.addEventListener('click', (e) => {
+            const btnDelHist = e.target.closest('.btn-delete-hist');
+            if(btnDelHist) {
+                this.apagarHistorico(btnDelHist.dataset.banco, parseInt(btnDelHist.dataset.idx));
+            }
+        });
+
+        document.getElementById('btn-open-aporte')?.addEventListener('click', () => {
+            const hoje = new Date();
+            const dataLocal = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0') + '-' + String(hoje.getDate()).padStart(2, '0');
+            document.getElementById('aporte-data').value = dataLocal;
+            document.getElementById('modal-aporte')?.classList.remove('hidden');
+        });
+
+        document.getElementById('btn-salvar-aporte')?.addEventListener('click', () => {
+            const banco = document.getElementById('aporte-banco').value;
+            const cat = document.getElementById('aporte-cat').value;
+            const data = document.getElementById('aporte-data').value;
+            const desc = document.getElementById('aporte-desc').value.trim();
+            const valor = parseFloat(document.getElementById('aporte-valor').value);
+
+            if (!banco || !data || !desc || isNaN(valor) || valor <= 0) {
+                return UI.showToast("Preencha todos os campos do aporte corretamente.", "warning");
+            }
+
+            const novaT = { id: Date.now(), data, desc, cat, valor, tipo: 'entrada', bancoDestino: banco };
+            let trans = DB.getTransacoes();
+            trans.unshift(novaT);
+            Transacoes.aplicarEfeito(novaT);
+            DB.setTransacoes(trans);
+
+            UI.showToast("Aporte registrado na caixinha com sucesso!");
+            ['aporte-desc', 'aporte-valor'].forEach(id => document.getElementById(id).value = '');
+            document.getElementById('modal-aporte')?.classList.add('hidden');
+            App.updateAll();
+        });
+
+        document.querySelectorAll('#table-descritivo-caixinhas .sortable-caixinha').forEach(th => {
+            th.addEventListener('click', () => {
+                const col = th.getAttribute('data-sort');
+                if (this.sortCol === col) {
+                    this.sortAsc = !this.sortAsc;
+                } else {
+                    this.sortCol = col;
+                    this.sortAsc = true;
+                }
+
+                document.querySelectorAll('#table-descritivo-caixinhas .sortable-caixinha i').forEach(i => i.className = 'fa-solid fa-sort');
+                th.querySelector('i').className = this.sortAsc ? 'fa-solid fa-sort-up' : 'fa-solid fa-sort-down';
+
+                this.renderDescritivo();
+            });
+        });
+    },
+
+    apagarHistorico(banco, idx) {
+        if(!confirm("Remover o registro do histórico?")) return;
+        let bancos = DB.getBancos();
+        const reg = bancos[banco]?.historico?.[idx];
+        if (!reg) return;
+
+        if (reg.tipo === 'rendimento' || reg.tipo === 'aporte') {
+            bancos[banco].saldo = Math.max(0, bancos[banco].saldo - reg.valorMovimento);
+            // Se o histórico removido foi um rendimento, não devemos ajustar CC aqui,
+            // porque o CC só é afetado em 'withdraw' e em transações.
+        } else if (reg.tipo === 'retirada') {
+            // Retirada (vai para CC) foi subtração do saldo da caixinha; ao remover,
+            // devolvemos o saldo da caixinha (e mantemos CC como estava).
+            bancos[banco].saldo += reg.valorMovimento;
+            // Obs: o sistema não mantém vínculo automático do CC ao histórico,
+            // então não ajustamos CC para evitar dupla contagem.
+        }
+
+        bancos[banco].historico.splice(idx, 1);
+        DB.setBancos(bancos);
+        App.updateAll();
     },
 
     esconderInputs(banco) {
@@ -1306,6 +1378,67 @@ const Caixinhas = {
         if (badgeHoje) {
             badgeHoje.innerText = '+ ' + totalRendimentoHoje.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         }
+
+        this.renderDescritivo(bancos);
+    },
+
+    // Descritivo consolidado: junta o histórico de todas as caixinhas em uma única tabela
+    renderDescritivo(bancosParam) {
+        const bancos = bancosParam || DB.getBancos();
+        const nomes = { nubank: 'Nubank', mp: 'Mercado Pago', picpay: 'PicPay' };
+
+        const parseDataBr = (str) => {
+            const [d, m, y] = (str || '').split('/').map(Number);
+            return new Date(y || 0, (m || 1) - 1, d || 1);
+        };
+
+        let linhas = [];
+        Object.keys(bancos).forEach(banco => {
+            (bancos[banco].historico || []).forEach((h, idx) => {
+                linhas.push({ ...h, banco, idx, bancoNome: nomes[banco] || banco });
+            });
+        });
+
+        const col = this.sortCol;
+        const asc = this.sortAsc;
+        linhas.sort((a, b) => {
+            let valA, valB;
+            if (col === 'data') {
+                valA = parseDataBr(a.data);
+                valB = parseDataBr(b.data);
+            } else if (col === 'banco') {
+                valA = a.bancoNome;
+                valB = b.bancoNome;
+            } else if (col === 'tipo') {
+                valA = a.tipo;
+                valB = b.tipo;
+            } else {
+                valA = a[col];
+                valB = b[col];
+            }
+
+            if (valA < valB) return asc ? -1 : 1;
+            if (valA > valB) return asc ? 1 : -1;
+            return 0;
+        });
+
+        const tbody = document.getElementById('tbody-descritivo-caixinhas');
+        if (!tbody) return;
+
+        tbody.innerHTML = linhas.length ? linhas.map(l => {
+            const isYield = l.tipo === 'rendimento' || l.tipo === 'aporte';
+            const tagClass = l.tipo === 'aporte' ? 'hist-tag-aporte' : (isYield ? 'hist-tag-yield' : 'hist-tag-retirada');
+            return `
+            <tr>
+                <td>${l.data}</td>
+                <td>${l.bancoNome}</td>
+                <td><span class="hist-tag ${tagClass}">${l.tipo}</span></td>
+                <td>${l.valorAnterior.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
+                <td class="${isYield ? 'hist-yield' : 'hist-withdraw'}">${isYield ? '+' : '-'} ${l.valorMovimento.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
+                <td>${l.valorNovo.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
+                <td><button class="btn-action btn-delete-hist" data-banco="${l.banco}" data-idx="${l.idx}" title="Remover registro"><i class="fa-solid fa-trash"></i></button></td>
+            </tr>`;
+        }).join('') : `<tr><td colspan="7" style="text-align:center; color:var(--text-placeholder);">Nenhuma movimentação registrada.</td></tr>`;
     }
 };
 
@@ -1516,6 +1649,10 @@ const Emprestimos = {
             }
         });
 
+        document.getElementById('btn-open-criar-emp')?.addEventListener('click', () => {
+            document.getElementById('modal-criar-emp')?.classList.remove('hidden');
+        });
+
         document.getElementById('btn-add-emp')?.addEventListener('click', () => {
             const val = parseFloat(document.getElementById('emp-valor').value);
             const prazo = parseInt(document.getElementById('emp-prazo').value);
@@ -1543,7 +1680,8 @@ const Emprestimos = {
                 desc: `Empréstimo Concedido: ${nome}`,
                 cat: 'Outros',
                 valor: val,
-                tipo: 'saida'
+                tipo: 'saida',
+                empId: novoEmpId
             };
             Transacoes.aplicarEfeito(novaT); 
             trans.unshift(novaT);
@@ -1551,6 +1689,7 @@ const Emprestimos = {
 
             UI.showToast("Empréstimo criado e registrado no Descritivo!");
             ['emp-nome','emp-valor','emp-taxa-total','emp-prazo','emp-intervalo'].forEach(id => document.getElementById(id).value = '');
+            document.getElementById('modal-criar-emp')?.classList.add('hidden');
             App.updateAll();
         });
 
@@ -1679,9 +1818,30 @@ const Emprestimos = {
 
             // Lógica de Apagar Empréstimo
             const btnDel = e.target.closest('.btn-delete-emp');
-            if(btnDel && confirm("Apagar empréstimo permanentemente? (As transações já gravadas no Descritivo NÃO serão apagadas automaticamente)")) {
-                DB.setEmprestimos(DB.getEmprestimos().filter(emp => emp.id !== parseInt(btnDel.dataset.id)));
+            if(btnDel && confirm("Apagar empréstimo permanentemente? (Todas as transações relacionadas serão apagadas do Descritivo)")) {
+                const empId = parseInt(btnDel.dataset.id);
+                
+                // Remover o empréstimo
+                DB.setEmprestimos(DB.getEmprestimos().filter(emp => emp.id !== empId));
+                
+                // Remover todas as transações relacionadas ao empréstimo
+                let trans = DB.getTransacoes();
+                const transToRemove = trans.filter(t => t.empId === empId);
+                
+                // Reverter efeitos das transações antes de remover
+                transToRemove.forEach(t => {
+                    const idx = trans.findIndex(x => x.id === t.id);
+                    if(idx !== -1) {
+                        Transacoes.aplicarEfeito(t, true);
+                    }
+                });
+                
+                // Remover as transações
+                trans = trans.filter(t => t.empId !== empId);
+                DB.setTransacoes(trans);
+                
                 App.updateAll();
+                UI.showToast('Empréstimo e transações removidos!');
             }
         });
 
