@@ -103,12 +103,23 @@ const DB = {
 // ==========================================
 const Cloud = {
     saveTimeout: null,
-    lastSyncString: null, 
+    lastSyncString: null,
+    lastActivityKey: 'sf_last_activity_at',
+    inactivityLimitMs: 10 * 60 * 1000,
+    requiresStartupChoice: false,
+    loginRequested: false,
 
     init() {
         const authChoice = localStorage.getItem('sf_auth_choice');
-        
-        if (authChoice === 'offline') {
+
+        const lastActivity = Number(localStorage.getItem(this.lastActivityKey)) || 0;
+        this.requiresStartupChoice = lastActivity > 0 && Date.now() - lastActivity > this.inactivityLimitMs;
+        if (!lastActivity) this.registrarAtividade();
+        this.iniciarMonitoramentoAtividade();
+
+        if (this.requiresStartupChoice) {
+            document.getElementById('login-overlay')?.classList.remove('hidden');
+        } else if (authChoice === 'offline') {
             document.getElementById('login-overlay')?.classList.add('hidden');
         } else if (!authChoice) {
             document.getElementById('login-overlay')?.classList.remove('hidden');
@@ -118,6 +129,9 @@ const Cloud = {
         document.getElementById('btn-initial-login')?.addEventListener('click', () => this.login());
         document.getElementById('btn-initial-offline')?.addEventListener('click', () => {
             localStorage.setItem('sf_auth_choice', 'offline');
+            this.requiresStartupChoice = false;
+            this.loginRequested = false;
+            this.registrarAtividade();
             document.getElementById('login-overlay')?.classList.add('hidden');
             UI.showToast("Modo Offline Ativado. Seus dados ficarão apenas neste dispositivo.", "warning");
         });
@@ -129,6 +143,28 @@ const Cloud = {
         });
 
         this.loadScripts();
+    },
+
+    registrarAtividade() {
+        localStorage.setItem(this.lastActivityKey, Date.now().toString());
+    },
+
+    iniciarMonitoramentoAtividade() {
+        const atualizar = () => this.registrarAtividade();
+        ['pointerdown', 'keydown', 'touchstart', 'click'].forEach(eventName => {
+            document.addEventListener(eventName, atualizar, { passive: true });
+        });
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) return;
+
+            const ultimaAtividade = Number(localStorage.getItem(this.lastActivityKey)) || 0;
+            if (ultimaAtividade > 0 && Date.now() - ultimaAtividade > this.inactivityLimitMs) {
+                this.requiresStartupChoice = true;
+                document.getElementById('login-overlay')?.classList.remove('hidden');
+            } else {
+                atualizar();
+            }
+        });
     },
 
     loadScripts() {
@@ -149,17 +185,29 @@ const Cloud = {
                     scope: GOOGLE_API.SCOPES,
                     callback: (tokenResponse) => {
                         if (tokenResponse && tokenResponse.error) {
+                            this.loginRequested = false;
                             console.warn("Erro no token:", tokenResponse.error);
                             if (localStorage.getItem('sf_auth_choice') === 'google') {
                                 UI.showToast("Nuvem pausada. Trabalhando offline temporariamente.", "warning");
-                                document.getElementById('login-overlay')?.classList.add('hidden'); 
+                                if (!this.requiresStartupChoice) {
+                                    document.getElementById('login-overlay')?.classList.add('hidden');
+                                }
                             }
                             return;
                         }
                         if (tokenResponse && tokenResponse.access_token) {
+                            if (this.requiresStartupChoice && !this.loginRequested) {
+                                localStorage.setItem('sf_google_token', tokenResponse.access_token);
+                                localStorage.setItem('sf_google_token_time', Date.now().toString());
+                                gapi.client.setToken({ access_token: tokenResponse.access_token });
+                                return;
+                            }
                             localStorage.setItem('sf_auth_choice', 'google');
                             localStorage.setItem('sf_google_token', tokenResponse.access_token);
                             localStorage.setItem('sf_google_token_time', Date.now().toString());
+                            this.requiresStartupChoice = false;
+                            this.loginRequested = false;
+                            this.registrarAtividade();
                             gapi.client.setToken({ access_token: tokenResponse.access_token });
                             
                             document.getElementById('login-overlay')?.classList.add('hidden');
@@ -186,19 +234,31 @@ const Cloud = {
         if (authChoice === 'google') {
             if (isTokenValid) {
                 gapi.client.setToken({ access_token: savedToken });
-                document.getElementById('login-overlay')?.classList.add('hidden');
-                this.onAuthenticated();
+                if (this.requiresStartupChoice) {
+                    document.getElementById('login-overlay')?.classList.remove('hidden');
+                } else {
+                    document.getElementById('login-overlay')?.classList.add('hidden');
+                    this.onAuthenticated();
+                }
             } else {
                 try {
                     GOOGLE_API.tokenClient.requestAccessToken({ prompt: 'none' });
-                    document.getElementById('login-overlay')?.classList.add('hidden');
+                    if (this.requiresStartupChoice) {
+                        document.getElementById('login-overlay')?.classList.remove('hidden');
+                    } else {
+                        document.getElementById('login-overlay')?.classList.add('hidden');
+                    }
                 } catch (e) {
                     UI.showToast("Nuvem pausada. Trabalhando offline.", "warning");
-                    document.getElementById('login-overlay')?.classList.add('hidden');
+                    if (!this.requiresStartupChoice) document.getElementById('login-overlay')?.classList.add('hidden');
                 }
             }
         } else if (authChoice === 'offline') {
-            document.getElementById('login-overlay')?.classList.add('hidden');
+            if (this.requiresStartupChoice) {
+                document.getElementById('login-overlay')?.classList.remove('hidden');
+            } else {
+                document.getElementById('login-overlay')?.classList.add('hidden');
+            }
         } else {
             document.getElementById('login-overlay')?.classList.remove('hidden');
         }
@@ -206,6 +266,7 @@ const Cloud = {
 
     login() {
         if (!GOOGLE_API.tokenClient) return UI.showToast("Carregando serviços do Google...", "warning");
+        this.loginRequested = true;
         GOOGLE_API.tokenClient.requestAccessToken();
     },
 
@@ -882,7 +943,16 @@ const Dashboard = {
         document.getElementById('valor-conta-corrente').innerText = cc.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         
         let totBancos = Object.values(DB.getBancos()).reduce((acc, b) => acc + b.saldo, 0);
-        let totEmp = DB.getEmprestimos().reduce((acc, emp) => acc + (emp.totalReceber - (emp.parcelas.filter(p => p.paga).length * emp.valorParcela)), 0);
+        let totEmp = DB.getEmprestimos().reduce((acc, emp) => {
+            const valorPago = emp.parcelas.reduce((total, parcela) => {
+                if (!parcela.paga) return total;
+                const valor = parcela.valor !== null && parcela.valor !== '' && Number.isFinite(Number(parcela.valor))
+                    ? Number(parcela.valor)
+                    : Number(emp.valorParcela) || 0;
+                return total + valor;
+            }, 0);
+            return acc + Math.max(0, emp.totalReceber - valorPago);
+        }, 0);
         let totRV = DB.getAtivos().reduce((acc, a) => acc + (a.quantidade * a.precoAtual), 0);
         const patrimonio = cc + totBancos + totEmp + totRV;
 
@@ -1096,7 +1166,7 @@ const Transacoes = {
                 let emp = emps.find(e => e.id === t.empId);
                 if (emp && emp.parcelas[t.parcelaIdx]) {
                     emp.parcelas[t.parcelaIdx].paga = false;
-                    DB.setEmprestimos(emps);
+                    Emprestimos.salvarAtualizacao(emps, emp);
                 }
             }
 
@@ -1212,7 +1282,24 @@ const Caixinhas = {
 
                 if(btnSave.classList.contains('btn-save-saldo')) {
                     const val = parseFloat(document.getElementById(`input-saldo-${banco}`).value);
-                    if(!isNaN(val)) bancos[banco].saldo = val;
+                    if(Number.isFinite(val) && val >= 0) {
+                        const ant = bancos[banco].saldo;
+                        if(val !== ant) {
+                            const hoje = new Date();
+                            const dataLocal = `${String(hoje.getDate()).padStart(2, '0')}/${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`;
+                            bancos[banco].saldo = val;
+                            bancos[banco].historico.unshift({
+                                data: dataLocal,
+                                valorAnterior: ant,
+                                valorMovimento: Math.round((val - ant) * 100) / 100,
+                                valorNovo: val,
+                                tipo: 'ajuste'
+                            });
+                        }
+                    } else {
+                        UI.showToast('Informe um saldo válido e não negativo.', 'warning');
+                        return;
+                    }
                 } else if(btnSave.classList.contains('btn-save-yield')) {
                     const val = parseFloat(document.getElementById(`input-yield-${banco}`).value);
                     if(!isNaN(val) && val > 0) {
@@ -1303,7 +1390,9 @@ const Caixinhas = {
         const reg = bancos[banco]?.historico?.[idx];
         if (!reg) return;
 
-        if (reg.tipo === 'rendimento' || reg.tipo === 'aporte') {
+        if (reg.tipo === 'ajuste') {
+            bancos[banco].saldo = Math.max(0, bancos[banco].saldo - Number(reg.valorMovimento || 0));
+        } else if (reg.tipo === 'rendimento' || reg.tipo === 'aporte') {
             bancos[banco].saldo = Math.max(0, bancos[banco].saldo - reg.valorMovimento);
             // Se o histórico removido foi um rendimento, não devemos ajustar CC aqui,
             // porque o CC só é afetado em 'withdraw' e em transações.
@@ -1358,8 +1447,8 @@ const Caixinhas = {
 
             const histContainer = document.getElementById(`historico-${banco}`);
             histContainer.innerHTML = conta.historico.length ? conta.historico.map((h, i) => {
-                const isYield = h.tipo === 'rendimento' || h.tipo === 'aporte';
-                const tagClass = h.tipo === 'aporte' ? 'hist-tag-aporte' : (isYield ? 'hist-tag-yield' : 'hist-tag-retirada');
+                const isPositive = h.tipo === 'rendimento' || h.tipo === 'aporte' || (h.tipo === 'ajuste' && h.valorMovimento >= 0);
+                const tagClass = h.tipo === 'aporte' ? 'hist-tag-aporte' : (h.tipo === 'ajuste' ? 'hist-tag-ajuste' : (isPositive ? 'hist-tag-yield' : 'hist-tag-retirada'));
                 return `
                 <div class="hist-item">
                     <div class="hist-details">
@@ -1367,7 +1456,7 @@ const Caixinhas = {
                         <span class="hist-calc">${h.valorAnterior.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} ➔ ${h.valorNovo.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
                     </div>
                     <span style="display: flex; align-items: center;">
-                        <span class="${isYield ? 'hist-yield' : 'hist-withdraw'}">${isYield ? '+' : '-'} ${h.valorMovimento.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+                        <span class="${isPositive ? 'hist-yield' : 'hist-withdraw'}">${h.valorMovimento > 0 ? '+' : (h.valorMovimento < 0 ? '-' : '')} ${Math.abs(h.valorMovimento).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
                         <button class="btn-action btn-delete-hist" data-banco="${banco}" data-idx="${i}" style="margin-left: 8px;"><i class="fa-solid fa-trash"></i></button>
                     </span>
                 </div>`;
@@ -1426,15 +1515,15 @@ const Caixinhas = {
         if (!tbody) return;
 
         tbody.innerHTML = linhas.length ? linhas.map(l => {
-            const isYield = l.tipo === 'rendimento' || l.tipo === 'aporte';
-            const tagClass = l.tipo === 'aporte' ? 'hist-tag-aporte' : (isYield ? 'hist-tag-yield' : 'hist-tag-retirada');
+            const isPositive = l.tipo === 'rendimento' || l.tipo === 'aporte' || (l.tipo === 'ajuste' && l.valorMovimento >= 0);
+            const tagClass = l.tipo === 'aporte' ? 'hist-tag-aporte' : (l.tipo === 'ajuste' ? 'hist-tag-ajuste' : (isPositive ? 'hist-tag-yield' : 'hist-tag-retirada'));
             return `
             <tr>
                 <td>${l.data}</td>
                 <td>${l.bancoNome}</td>
                 <td><span class="hist-tag ${tagClass}">${l.tipo}</span></td>
                 <td>${l.valorAnterior.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
-                <td class="${isYield ? 'hist-yield' : 'hist-withdraw'}">${isYield ? '+' : '-'} ${l.valorMovimento.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
+                <td class="${isPositive ? 'hist-yield' : 'hist-withdraw'}">${l.valorMovimento > 0 ? '+' : (l.valorMovimento < 0 ? '-' : '')} ${Math.abs(l.valorMovimento).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
                 <td>${l.valorNovo.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
                 <td><button class="btn-action btn-delete-hist" data-banco="${l.banco}" data-idx="${l.idx}" title="Remover registro"><i class="fa-solid fa-trash"></i></button></td>
             </tr>`;
@@ -1534,9 +1623,125 @@ const RV = {
 
 const Emprestimos = {
     currentEditEmpId: null,
+    promovidoId: null,
+    pointerDrag: null,
+    moverEmprestimo(id, destinoId, depoisDoDestino = false) {
+        const emps = DB.getEmprestimos();
+        const origem = emps.findIndex(emp => String(emp.id) === String(id));
+        const destino = emps.findIndex(emp => String(emp.id) === String(destinoId));
+        if(origem < 0 || destino < 0 || origem === destino) return;
+
+        const [emprestimo] = emps.splice(origem, 1);
+        const indiceDestino = emps.findIndex(emp => String(emp.id) === String(destinoId));
+        emps.splice(indiceDestino + (depoisDoDestino ? 1 : 0), 0, emprestimo);
+        DB.setEmprestimos(emps);
+        this.promovidoId = null;
+        App.updateAll();
+    },
+    salvarAtualizacao(emprestimos, emprestimo) {
+        const index = emprestimos.findIndex(item => String(item.id) === String(emprestimo.id));
+        if (index > 0) emprestimos.unshift(emprestimos.splice(index, 1)[0]);
+        this.promovidoId = String(emprestimo.id);
+        DB.setEmprestimos(emprestimos);
+    },
+    recalcularParcelasPendentes(emprestimo) {
+        const valorPago = emprestimo.parcelas.reduce((total, parcela) => {
+            if (!parcela.paga) return total;
+            const valor = parcela.valor !== null && parcela.valor !== '' && Number.isFinite(Number(parcela.valor))
+                ? Number(parcela.valor)
+                : Number(emprestimo.valorParcela) || 0;
+            return total + valor;
+        }, 0);
+        const pendentes = emprestimo.parcelas.filter(parcela => !parcela.paga);
+        const saldoCentavos = Math.max(0, Math.round((Number(emprestimo.totalReceber) - valorPago) * 100));
+
+        if (!pendentes.length) {
+            emprestimo.valorParcela = 0;
+            return;
+        }
+
+        const valorBase = Math.floor(saldoCentavos / pendentes.length);
+        const centavosExtras = saldoCentavos % pendentes.length;
+        pendentes.forEach((parcela, index) => {
+            parcela.valor = (valorBase + (index < centavosExtras ? 1 : 0)) / 100;
+        });
+        emprestimo.valorParcela = saldoCentavos / pendentes.length / 100;
+    },
     init() {
+        const listaEmprestimos = document.getElementById('lista-emprestimos');
+        listaEmprestimos?.addEventListener('click', (e) => {
+            const dragHandle = e.target.closest('.emp-drag-handle');
+            if(dragHandle) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            const btnMove = e.target.closest('.btn-move-emp');
+            if(!btnMove) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const emps = DB.getEmprestimos();
+            const index = emps.findIndex(emp => String(emp.id) === String(btnMove.dataset.id));
+            const destino = index + Number(btnMove.dataset.direction);
+            if(index < 0 || destino < 0 || destino >= emps.length) return;
+            this.moverEmprestimo(emps[index].id, emps[destino].id, Number(btnMove.dataset.direction) > 0);
+        });
+
+        listaEmprestimos?.addEventListener('pointerdown', (e) => {
+            const handle = e.target.closest('.emp-drag-handle');
+            if(!handle || (e.pointerType === 'mouse' && e.button !== 0)) return;
+            const card = handle.closest('.emp-card');
+            if(!card) return;
+            e.preventDefault();
+            handle.setPointerCapture?.(e.pointerId);
+            this.pointerDrag = {
+                pointerId: e.pointerId,
+                id: card.dataset.empId,
+                startX: e.clientX,
+                startY: e.clientY,
+                dragging: false,
+                targetId: null,
+                insertAfter: false
+            };
+        });
+
+        document.addEventListener('pointermove', (e) => {
+            const drag = this.pointerDrag;
+            if(!drag || e.pointerId !== drag.pointerId) return;
+            if(!drag.dragging && Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < 6) return;
+
+            e.preventDefault();
+            drag.dragging = true;
+            listaEmprestimos.querySelector(`.emp-card[data-emp-id="${CSS.escape(drag.id)}"]`)?.classList.add('dragging');
+
+            const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.emp-card');
+            listaEmprestimos.querySelectorAll('.emp-card.drop-target').forEach(card => card.classList.remove('drop-target'));
+            if(!target || target.dataset.empId === drag.id) {
+                drag.targetId = null;
+                return;
+            }
+            const rect = target.getBoundingClientRect();
+            drag.targetId = target.dataset.empId;
+            drag.insertAfter = e.clientY > rect.top + rect.height / 2;
+            target.classList.add('drop-target');
+        });
+
+        const finalizarArraste = (e) => {
+            const drag = this.pointerDrag;
+            if(!drag || (e.pointerId !== undefined && e.pointerId !== drag.pointerId)) return;
+            this.pointerDrag = null;
+            listaEmprestimos.querySelectorAll('.emp-card.dragging, .emp-card.drop-target').forEach(card => {
+                card.classList.remove('dragging', 'drop-target');
+            });
+            if(drag.dragging && drag.targetId) {
+                this.moverEmprestimo(drag.id, drag.targetId, drag.insertAfter);
+            }
+        };
+        document.addEventListener('pointerup', finalizarArraste);
+        document.addEventListener('pointercancel', finalizarArraste);
+
         // Lógica do botão Editar principal
-        document.getElementById('lista-emprestimos')?.addEventListener('click', (e) => {
+        listaEmprestimos?.addEventListener('click', (e) => {
             const btnEdit = e.target.closest('.btn-edit-emp');
             if(btnEdit) {
                 this.currentEditEmpId = parseInt(btnEdit.dataset.id);
@@ -1567,7 +1772,7 @@ const Emprestimos = {
                 if(novaData) {
                     emp.dataCriacao = novaData;
                 }
-                DB.setEmprestimos(emps);
+                this.salvarAtualizacao(emps, emp);
                 document.getElementById('modal-edit-nome').classList.add('hidden');
                 App.updateAll();
                 UI.showToast('Nome e data atualizados!');
@@ -1582,29 +1787,59 @@ const Emprestimos = {
             let emps = DB.getEmprestimos();
             const emp = emps.find(x => x.id === this.currentEditEmpId);
             if(emp) {
-                const diff = novoNumero - emp.parcelas.length;
-                if(diff > 0) {
-                    // Adicionar parcelas
-                    for(let i = 0; i < diff; i++) {
-                        emp.parcelas.push({ paga: false, valor: emp.valorParcela, dataPagamento: null });
+                const parcelasPagas = emp.parcelas.filter(p => p.paga).length;
+                const totalAlvo = Math.max(novoNumero, parcelasPagas);
+                const trans = DB.getTransacoes();
+                let transacoesAlteradas = false;
+
+                // Reduzir removendo somente parcelas pendentes, começando pelo fim.
+                let remover = Math.max(0, emp.parcelas.length - totalAlvo);
+                const indicesAntigos = emp.parcelas.map((parcela, index) => ({ parcela, index }));
+                for(let i = emp.parcelas.length - 1; i >= 0 && remover > 0; i--) {
+                    if(!emp.parcelas[i].paga) {
+                        emp.parcelas.splice(i, 1);
+                        remover--;
                     }
-                } else if(diff < 0) {
-                    // Remover parcelas (apenas não pagas)
-                    let removidas = 0;
-                    emp.parcelas = emp.parcelas.filter(p => {
-                        if(p.paga) return true;
-                        if(removidas < Math.abs(diff)) {
-                            removidas++;
-                            return false;
-                        }
-                        return true;
-                    });
                 }
+
+                // Aumentar adicionando parcelas pendentes.
+                while(emp.parcelas.length < totalAlvo) {
+                    emp.parcelas.push({ paga: false, valor: 0, dataPagamento: null });
+                }
+
+                // Se a remoção deslocou parcelas pagas, atualizar o índice do recebimento vinculado.
+                indicesAntigos.forEach(({ parcela, index: indiceAntigo }) => {
+                    if(!parcela.paga) return;
+                    const indiceNovo = emp.parcelas.indexOf(parcela);
+                    if(indiceNovo === -1 || indiceNovo === indiceAntigo) return;
+
+                    const descricaoAntiga = `(Parc. ${indiceAntigo + 1})`;
+                    const vinculadas = trans.filter(t => {
+                        if(t.empId != null && String(t.empId) === String(emp.id)) {
+                            return t.parcelaIdx !== undefined
+                                ? Number(t.parcelaIdx) === indiceAntigo
+                                : t.desc?.includes(descricaoAntiga);
+                        }
+                        return t.empId == null &&
+                            t.desc === `Recebimento: ${emp.nome} ${descricaoAntiga}`;
+                    });
+                    if(vinculadas.length === 1) {
+                        const transacao = vinculadas[0];
+                        transacao.parcelaIdx = indiceNovo;
+                        transacao.desc = transacao.desc?.replace(descricaoAntiga, `(Parc. ${indiceNovo + 1})`);
+                        transacoesAlteradas = true;
+                    }
+                });
+
                 emp.prazo = emp.parcelas.length;
-                DB.setEmprestimos(emps);
+                this.recalcularParcelasPendentes(emp);
+                this.salvarAtualizacao(emps, emp);
+                if(transacoesAlteradas) DB.setTransacoes(trans);
                 document.getElementById('modal-edit-numero').classList.add('hidden');
                 App.updateAll();
-                UI.showToast('Número de parcelas atualizado!');
+                UI.showToast(novoNumero < parcelasPagas
+                    ? `As ${parcelasPagas} parcelas já pagas foram mantidas; restam ${emp.prazo} parcelas no total.`
+                    : 'Número atualizado e valores das parcelas pendentes recalculados.');
             }
         });
 
@@ -1619,7 +1854,7 @@ const Emprestimos = {
                 emp.jurosTotalPorcentagem = novoJuros;
                 emp.totalReceber = emp.valorEmprestado + (emp.valorEmprestado * (novoJuros / 100));
                 emp.valorParcela = emp.totalReceber / emp.prazo;
-                DB.setEmprestimos(emps);
+                this.salvarAtualizacao(emps, emp);
                 document.getElementById('modal-edit-juros').classList.add('hidden');
                 App.updateAll();
                 UI.showToast('Taxa de juros atualizada!');
@@ -1631,21 +1866,88 @@ const Emprestimos = {
             let emps = DB.getEmprestimos();
             const emp = emps.find(x => x.id === this.currentEditEmpId);
             if(emp) {
+                const trans = DB.getTransacoes();
+                let transacoesAlteradas = false;
+                const valoresPendentesEditados = new Set();
+                let valorInvalido = false;
                 emp.parcelas.forEach((p, i) => {
                     const valorInput = document.getElementById(`parcela-valor-${i}`);
                     const dataInput = document.getElementById(`parcela-data-${i}`);
-                    if(valorInput) {
+                    if(valorInput && !p.paga && valorInput.value !== '') {
                         const novoValor = parseFloat(valorInput.value);
-                        if(!isNaN(novoValor)) p.valor = novoValor;
+                        if(!Number.isFinite(novoValor) || novoValor < 0) {
+                            valorInvalido = true;
+                        } else {
+                            const valorAnterior = Number(p.valor ?? emp.valorParcela) || 0;
+                            p.valor = novoValor;
+                            if(novoValor !== valorAnterior) valoresPendentesEditados.add(p);
+                        }
                     }
                     if(dataInput && dataInput.value) {
                         p.dataPagamento = dataInput.value;
+
+                        const descricaoParcela = `(Parc. ${i + 1})`;
+                        const transacoesDaParcela = trans.filter(t => {
+                            const temMesmoEmprestimo = t.empId != null && String(t.empId) === String(emp.id);
+                            if (temMesmoEmprestimo) {
+                                return t.parcelaIdx !== undefined
+                                    ? Number(t.parcelaIdx) === i
+                                    : t.desc?.includes(descricaoParcela);
+                            }
+
+                            // Compatibilidade com recebimentos antigos sem empId/parcelaIdx.
+                            return t.empId == null &&
+                                t.desc === `Recebimento: ${emp.nome} ${descricaoParcela}` &&
+                                Number(t.valor) === Number(p.valor ?? emp.valorParcela);
+                        });
+                        const transacaoParcela = transacoesDaParcela.length === 1 ? transacoesDaParcela[0] : null;
+                        if(transacaoParcela && transacaoParcela.data !== dataInput.value) {
+                            transacaoParcela.data = dataInput.value;
+                            transacoesAlteradas = true;
+                        }
                     }
                 });
-                DB.setEmprestimos(emps);
+
+                if(valorInvalido) return UI.showToast('Informe valores válidos e não negativos.', 'warning');
+
+                if(valoresPendentesEditados.size) {
+                    const valorPago = emp.parcelas.reduce((total, parcela) => {
+                        if(!parcela.paga) return total;
+                        const valor = parcela.valor !== null && parcela.valor !== '' && Number.isFinite(Number(parcela.valor))
+                            ? Number(parcela.valor)
+                            : Number(emp.valorParcela) || 0;
+                        return total + valor;
+                    }, 0);
+                    const valorEditado = [...valoresPendentesEditados].reduce((total, parcela) => total + Number(parcela.valor), 0);
+                    const restantes = emp.parcelas.filter(parcela => !parcela.paga && !valoresPendentesEditados.has(parcela));
+                    const saldoCentavos = Math.round((Number(emp.totalReceber) - valorPago - valorEditado) * 100);
+
+                    if(saldoCentavos < 0) {
+                        return UI.showToast('Os valores informados excedem o saldo que falta receber.', 'warning');
+                    }
+
+                    if(restantes.length) {
+                        const valorBase = Math.floor(saldoCentavos / restantes.length);
+                        const centavosExtras = saldoCentavos % restantes.length;
+                        restantes.forEach((parcela, index) => {
+                            parcela.valor = (valorBase + (index < centavosExtras ? 1 : 0)) / 100;
+                        });
+                        emp.valorParcela = saldoCentavos / restantes.length / 100;
+                    } else {
+                        emp.totalReceber = valorPago + valorEditado;
+                        emp.valorParcela = valoresPendentesEditados.size
+                            ? valorEditado / valoresPendentesEditados.size
+                            : 0;
+                    }
+                }
+
+                this.salvarAtualizacao(emps, emp);
+                if(transacoesAlteradas) DB.setTransacoes(trans);
                 document.getElementById('modal-edit-parcelas').classList.add('hidden');
                 App.updateAll();
-                UI.showToast('Parcelas atualizadas!');
+                UI.showToast(valoresPendentesEditados.size
+                    ? 'Valor salvo; as demais parcelas pendentes foram recalculadas.'
+                    : 'Parcelas atualizadas!');
             }
         });
 
@@ -1708,7 +2010,7 @@ const Emprestimos = {
                 } else {
                     emp.parcelas[pIdx].dataPagamento = null;
                 }
-                DB.setEmprestimos(emps);
+                this.salvarAtualizacao(emps, emp);
                 
                 let trans = DB.getTransacoes();
 
@@ -1721,7 +2023,7 @@ const Emprestimos = {
                         data: dataLocal,
                         desc: `Recebimento: ${emp.nome} (Parc. ${pIdx + 1})`,
                         cat: 'Outros',
-                        valor: emp.parcelas[pIdx].valor || emp.valorParcela,
+                        valor: emp.parcelas[pIdx].valor ?? emp.valorParcela,
                         tipo: 'entrada',
                         empId: empId,
                         parcelaIdx: pIdx
@@ -1739,7 +2041,7 @@ const Emprestimos = {
                     } else {
                         // Fallback: se não achou a transação, pelo menos reverte o CC
                         // (evita deixar CC alto).
-                        DB.setCC(DB.getCC() - emp.valorParcela);
+                        DB.setCC(DB.getCC() - (emp.parcelas[pIdx].valor ?? emp.valorParcela));
                     }
                     UI.showToast("Recebimento cancelado.");
                 }
@@ -1864,6 +2166,11 @@ const Emprestimos = {
     render() {
         const c = document.getElementById('lista-emprestimos');
         if(!c) return;
+        const scrollX = window.scrollX;
+        const scrollY = window.scrollY;
+        const expandedIds = new Set(
+            [...c.querySelectorAll('.emp-card.expanded')].map(card => card.dataset.empId)
+        );
         let emps = DB.getEmprestimos();
 
         // Aplicar filtros
@@ -1891,22 +2198,43 @@ const Emprestimos = {
         });
         c.innerHTML = emps.length ? emps.map(emp => {
             const pagas = emp.parcelas.filter(p => p.paga).length;
+            const valorPago = emp.parcelas.reduce((total, parcela) => {
+                if(!parcela.paga) return total;
+                const valor = parcela.valor !== null && parcela.valor !== '' && Number.isFinite(Number(parcela.valor))
+                    ? Number(parcela.valor)
+                    : Number(emp.valorParcela) || 0;
+                return total + valor;
+            }, 0);
+            const totalReceber = Number(emp.totalReceber) || 0;
+            const percentualPago = totalReceber > 0
+                ? Math.min(100, Math.max(0, (valorPago / totalReceber) * 100))
+                : (valorPago > 0 ? 100 : 0);
+            const pagoCentavos = Math.round(valorPago * 100);
+            const totalCentavos = Math.round(totalReceber * 100);
+            const semParcelasPendentes = emp.parcelas.length > 0 && emp.parcelas.every(p => p.paga);
+            const classeProgresso = semParcelasPendentes && pagoCentavos < totalCentavos
+                ? 'residual'
+                : (pagoCentavos >= totalCentavos ? 'complete' : '');
             return `
-            <div class="emp-card">
+            <div class="emp-card${expandedIds.has(String(emp.id)) ? ' expanded' : ''}" data-emp-id="${emp.id}">
                 <div class="emp-header" onclick="this.parentElement.classList.toggle('expanded')">
                     <div class="emp-title"><h3>${emp.nome}</h3><p>R$ ${emp.valorEmprestado} + ${emp.jurosTotalPorcentagem}%</p></div>
+                    <button type="button" class="emp-drag-handle" title="Arraste para reordenar" aria-label="Arraste para reordenar este empréstimo"><span class="emp-drag-dots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span></button>
                     <div class="emp-stats">
                         <div class="total">${emp.totalReceber.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>
                         ${emp.dataCriacao ? `<div class="data-criacao">${emp.dataCriacao.split('-').reverse().join('/')}</div>` : ''}
                     </div>
                 </div>
                 <div class="emp-progress-container">
-                    <div class="emp-progress-bar"><div class="emp-progress-fill" style="width: ${(pagas/emp.prazo)*100}%;"></div></div>
+                    <div class="emp-progress-bar ${classeProgresso}"><div class="emp-progress-fill" style="width: ${percentualPago}%;"></div></div>
+                    <div class="emp-progress-summary"><span>Pago</span><strong>${valorPago.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</strong><span>de ${totalReceber.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span></div>
                 </div>
                 <div class="emp-body">
                     <div class="emp-body-header">
                         <h4>Controle</h4>
                         <div style="display: flex; gap: 8px;">
+                            <button class="btn-move-emp" data-id="${emp.id}" data-direction="-1" title="Mover para cima" aria-label="Mover para cima"><i class="fa-solid fa-arrow-up"></i></button>
+                            <button class="btn-move-emp" data-id="${emp.id}" data-direction="1" title="Mover para baixo" aria-label="Mover para baixo"><i class="fa-solid fa-arrow-down"></i></button>
                             <button class="btn-edit-emp" data-id="${emp.id}" title="Editar empréstimo"><i class="fa-solid fa-pen"></i></button>
                             <button class="btn-copy-emp" data-id="${emp.id}" title="Copiar comprovante para a área de transferência"><i class="fa-solid fa-copy"></i> <span>Copiar</span></button>
                             <button class="btn-export-emp" data-id="${emp.id}" title="Baixar comprovante de evolução em imagem"><i class="fa-solid fa-download"></i> <span>Baixar</span></button>
@@ -1921,7 +2249,7 @@ const Emprestimos = {
                                     <span>Parc. ${i + 1}</span>
                                 </div>
                                 <div class="parcela-info">
-                                    <span class="valor-parcela">${(p.valor || emp.valorParcela).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+                                    <span class="valor-parcela">${Number(p.valor ?? emp.valorParcela).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
                                     ${p.dataPagamento ? `<span class="data-pagamento">${p.dataPagamento.split('-').reverse().join('/')}</span>` : ''}
                                 </div>
                             </label>
@@ -1933,6 +2261,19 @@ const Emprestimos = {
                 </div>
             </div>`;
         }).join('') : `<div class="empty-state"><p>Sem empréstimos ativos.</p></div>`;
+
+        // Ao atualizar, acompanha o card até o início da lista; nos demais renders mantém a leitura.
+        const promovidoId = this.promovidoId;
+        this.promovidoId = null;
+        requestAnimationFrame(() => {
+            const cardPromovido = promovidoId && [...c.querySelectorAll('.emp-card')]
+                .find(card => card.dataset.empId === promovidoId);
+            if (cardPromovido) {
+                window.scrollTo({ top: cardPromovido.getBoundingClientRect().top + window.scrollY - 20, behavior: 'smooth' });
+            } else {
+                window.scrollTo(scrollX, scrollY);
+            }
+        });
     },
 
     openEditModal(action) {
@@ -1951,7 +2292,7 @@ const Emprestimos = {
                 container.innerHTML = emp.parcelas.map((p, i) => `
                     <div class="parcela-edit-item">
                         <label>Parc. ${i + 1}</label>
-                        <input type="number" id="parcela-valor-${i}" value="${p.valor || emp.valorParcela}" step="0.01" placeholder="Valor">
+                        <input type="number" id="parcela-valor-${i}" value="${p.valor ?? emp.valorParcela}" min="0" step="0.01" placeholder="Valor" ${p.paga ? 'disabled title="Desmarque a parcela para alterar o valor"' : ''}>
                         <input type="date" id="parcela-data-${i}" value="${p.dataPagamento || ''}">
                     </div>
                 `).join('');

@@ -178,6 +178,7 @@ select::-ms-expand { display: none; }
 .hist-tag { font-size: 9px; padding: 2px 6px; border-radius: 999px; margin-left: 5px; font-weight: 700; letter-spacing: 0.2px; }
 .hist-tag-yield { background: rgba(16, 185, 129, 0.15); color: var(--success); }
 .hist-tag-aporte { background: rgba(59, 130, 246, 0.15); color: var(--primary); }
+.hist-tag-ajuste { background: rgba(100, 116, 139, 0.15); color: var(--text-muted); }
 .hist-tag-retirada { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
 .hist-yield { font-size: 13px; font-weight: 700; color: var(--success); }
 .hist-withdraw { font-size: 13px; font-weight: 700; color: var(--danger); }
@@ -259,16 +260,27 @@ select::-ms-expand { display: none; }
 
 /* Empréstimos */
 .emp-card { background: var(--card-bg); border-radius: 16px; box-shadow: var(--shadow-sm); border: 1px solid var(--border-color); border-left: 5px solid var(--warning); overflow: hidden; margin-bottom: 20px;}
+.emp-card.dragging { opacity: 0.45; }
+.emp-card.drop-target { outline: 2px dashed var(--primary); outline-offset: 3px; }
 .emp-header { padding: 25px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background 0.2s; }
 .emp-header:hover { background: var(--input-bg); }
 .emp-title h3 { font-size: 18px; color: var(--text-main); margin-bottom: 5px; }
 .emp-title p { font-size: 13px; color: var(--text-muted); }
+.emp-drag-handle { flex: 0 0 36px; width: 36px; height: 16px; display: grid; place-items: center; align-self: flex-start; margin-top: -13px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--text-placeholder); cursor: grab; touch-action: none; transition: color 0.18s ease; z-index: 1; }
+.emp-drag-dots { display: grid; grid-template-columns: repeat(3, 3px); grid-template-rows: repeat(2, 3px); align-content: center; justify-content: center; gap: 2px 3px; }
+.emp-drag-dots i { display: block; width: 3px; height: 3px; border-radius: 50%; background: currentColor; }
+.emp-drag-handle:hover { color: var(--primary); }
+.emp-drag-handle:active { cursor: grabbing; }
 .emp-stats { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .emp-stats .total { font-size: 22px; font-weight: 700; color: var(--success); }
 .emp-stats .data-criacao { font-size: 12px; color: var(--text-muted); font-weight: 500; }
 .emp-progress-container { padding: 0 25px 20px 25px; }
 .emp-progress-bar { background: var(--bg-app); border-radius: 10px; height: 8px; width: 100%; overflow: hidden; margin-bottom: 8px;}
 .emp-progress-fill { background: var(--success); height: 100%; border-radius: 10px; transition: width 0.4s ease-out; }
+.emp-progress-summary { display: flex; align-items: center; gap: 5px; color: var(--text-muted); font-size: 12px; }
+.emp-progress-summary strong { color: var(--success); font-weight: 700; }
+.emp-progress-bar.residual { background: var(--warning); }
+.emp-progress-bar.complete { background: var(--success); }
 .emp-body { display: none; border-top: 1px solid var(--border-color); padding: 20px 25px; background: var(--input-bg); }
 .emp-card.expanded .emp-body { display: block; animation: fadeIn 0.3s ease-out; }
 .emp-body-header { display: flex; justify-content: space-between; margin-bottom: 15px; align-items: center; }
@@ -294,6 +306,8 @@ select::-ms-expand { display: none; }
 .btn-edit-parcela { background: none; border: none; cursor: pointer; color: var(--primary); padding: 2px; opacity: 0.7; transition: opacity 0.2s; }
 .btn-edit-parcela:hover { opacity: 1; }
 .btn-edit-emp { background: none; border: none; cursor: pointer; color: var(--primary); padding: 6px; border-radius: 6px; transition: background 0.2s; }
+.btn-move-emp { background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-muted); cursor: pointer; padding: 6px 8px; border-radius: 6px; }
+.btn-move-emp:hover { color: var(--primary); border-color: var(--primary); }
 .btn-edit-emp:hover { background: rgba(59, 130, 246, 0.1); }
 
 /* Configurações & Backup Botões */

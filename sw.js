@@ -1,4 +1,4 @@
-const CACHE_NAME = 'financas-v2'; // Nome atualizado para forçar o navegador a notar a mudança
+const CACHE_NAME = 'financas-v16'; // Atualizado para exigir escolha após mais de 10 minutos sem interação
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
