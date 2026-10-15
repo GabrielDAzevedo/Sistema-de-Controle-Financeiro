@@ -1230,7 +1230,7 @@ const Transacoes = {
                 <td>${t.data.split('-').reverse().join('/')}</td>
                 <td>${t.desc}</td>
                 <td><span style="background: rgba(148, 163, 184, 0.1); padding: 4px 10px; border-radius: 6px; font-size: 11px;">${t.cat}</span></td>
-                <td class="${t.tipo === 'entrada' ? 'positive' : 'negative'}">${t.tipo === 'entrada' ? '' : '- '}${t.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td class="${t.tipo === 'entrada' ? 'positive' : 'negative'}">${t.tipo === 'entrada' ? '+ ' : '- '}${t.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                 <td class="actions">
                     <button class="btn-action btn-edit" data-id="${t.id}"><i class="fa-solid fa-pen"></i></button>
                     <button class="btn-action btn-delete" data-id="${t.id}"><i class="fa-solid fa-trash"></i></button>
@@ -1456,7 +1456,7 @@ const Caixinhas = {
                         <span class="hist-calc">${h.valorAnterior.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} ➔ ${h.valorNovo.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
                     </div>
                     <span style="display: flex; align-items: center;">
-                        <span class="${isPositive ? 'hist-yield' : 'hist-withdraw'}">${h.valorMovimento > 0 ? '+' : (h.valorMovimento < 0 ? '-' : '')} ${Math.abs(h.valorMovimento).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+                        <span class="${h.tipo === 'ajuste' ? (h.valorMovimento >= 0 ? 'hist-yield' : 'hist-withdraw') : (isPositive ? 'hist-yield' : 'hist-withdraw')}">${h.tipo === 'ajuste' ? (h.valorMovimento > 0 ? '+' : (h.valorMovimento < 0 ? '-' : '')) : (h.tipo === 'retirada' ? '-' : '+')} ${Math.abs(h.valorMovimento).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
                         <button class="btn-action btn-delete-hist" data-banco="${banco}" data-idx="${i}" style="margin-left: 8px;"><i class="fa-solid fa-trash"></i></button>
                     </span>
                 </div>`;
@@ -1523,7 +1523,7 @@ const Caixinhas = {
                 <td>${l.bancoNome}</td>
                 <td><span class="hist-tag ${tagClass}">${l.tipo}</span></td>
                 <td>${l.valorAnterior.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
-                <td class="${isPositive ? 'hist-yield' : 'hist-withdraw'}">${l.valorMovimento > 0 ? '+' : (l.valorMovimento < 0 ? '-' : '')} ${Math.abs(l.valorMovimento).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
+                <td class="${l.tipo === 'ajuste' ? (l.valorMovimento >= 0 ? 'hist-yield' : 'hist-withdraw') : (isPositive ? 'hist-yield' : 'hist-withdraw')}">${l.tipo === 'ajuste' ? (l.valorMovimento > 0 ? '+' : (l.valorMovimento < 0 ? '-' : '')) : (l.tipo === 'retirada' ? '-' : '+')} ${Math.abs(l.valorMovimento).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
                 <td>${l.valorNovo.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
                 <td><button class="btn-action btn-delete-hist" data-banco="${l.banco}" data-idx="${l.idx}" title="Remover registro"><i class="fa-solid fa-trash"></i></button></td>
             </tr>`;
